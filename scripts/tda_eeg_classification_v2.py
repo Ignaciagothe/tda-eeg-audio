@@ -13,14 +13,10 @@ import json
 from ripser import ripser
 from matplotlib.patches import Patch
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score,cross_val_predict,GroupKFold
-from sklearn.metrics import classification_report,confusion_matrix,roc_auc_score,f1_score
+from sklearn.model_selection import cross_val_score, cross_val_predict, GroupKFold
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, f1_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
-warnings.filterwarnings("ignore")
-plt.style.use("seaborn-v0_8-darkgrid")
-sns.set_palette("husl")
-np.random.seed(42)
 
 
 
@@ -50,21 +46,7 @@ N_SPLITS = 5
 N_PERMUTATIONS = 1000 
 N_BOOTSTRAP = 1000 
 RANDOM_STATE = 42
-
-print("Configuración:")
-print(f"  Directorio de grafos: {GRAPHS_DIR}")
-print(f"  Salida de características: {FEATURES_DIR}")
-print(f"  Salida de resultados: {RESULTS_DIR}")
-print("Bandas de frecuencia:")
-for band, desc in FREQ_BAND_RANGES.items():
-    print(f"  {band}: {desc}")
-print("Parámetros TDA:")
-print(f"  Dimensión de homología máxima: H{MAX_DIM}")
-print(f"  Longitud máxima de arista (filtración): {MAX_EDGE_LENGTH}")
-print("\nParámetros de clasificación:")
-print(f"  Folds de CV: {N_SPLITS}")
-print(f"  Iteraciones de permutación: {N_PERMUTATIONS}")
-print(f"  Iteraciones de bootstrap: {N_BOOTSTRAP}")
+VALIDATION_SAMPLES = 3
 
 
 # tda
@@ -217,36 +199,6 @@ def extract_persistence_features(diagram, dim_name=""):
     return features
 
 
-# Probar con datos de muestra
-print("Prueba del Pipeline ")
-np.random.seed(42)
-test_dist = np.random.rand(47, 47)
-test_dist = (test_dist + test_dist.T) / 2  
-np.fill_diagonal(test_dist, 0)
-
-
-is_valid, issues = validate_distance_matrix(test_dist, "test")
-print(f"Validación de matriz de distancia: {'APROBADA' if is_valid else 'FALLIDA'}")
-if issues:
-    for issue in issues:
-        print(f"  - {issue}")
-
-# Calcular persistencia
-diagrams_test = compute_persistence_diagram(test_dist, MAX_DIM, MAX_EDGE_LENGTH)
-print("Diagramas de persistencia calculados:")
-print(f"  H0 (componentes conectadas): {len(diagrams_test[0])} características")
-print(f"  H1 (ciclos/loops): {len(diagrams_test[1])} características")
-
-# Extraer características
-features_h0 = extract_persistence_features(diagrams_test[0], "H0")
-features_h1 = extract_persistence_features(diagrams_test[1], "H1")
-print("Características extraídas:")
-print(f"  H0: {len(features_h0)} características escalares")
-print(f"  H1: {len(features_h1)} características escalares")
-print(f"  Total por banda: {len(features_h0) + len(features_h1)} características")
-
-
-
 def plot_persistence_diagram(diagrams, title="Diagrama de Persistencia", ax=None):
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 8))
@@ -286,24 +238,17 @@ def plot_persistence_diagram(diagrams, title="Diagrama de Persistencia", ax=None
     return ax
 
 
-fig, ax = plt.subplots(figsize=(8, 8))
-plot_persistence_diagram(diagrams_test, "Diagrama de Persistencia de Muestra (Datos Aleatorios)", ax)
-plt.tight_layout()
-plt.savefig(RESULTS_DIR / "sample_persistence_diagram.png", dpi=150)
-plt.show()
-
-print("Explicación del diagrama de persistencia:")
-print("  - Cada punto representa una característica topológica")
-print("  - Eje X (nacimiento): umbral de distancia donde aparece la característica")
-print("  - Eje Y (muerte): umbral de distancia donde desaparece la característica")
-print("  - Distancia desde diagonal = persistencia = importancia")
-print("  - H0: componentes conectadas (cómo se fragmenta el grafo)")
-print("  - H1: ciclos/loops (patrones de conectividad circular)")
-
 ## Procesar todos los archivos y extraer características
 
 
-def process_file_features(file_dir, freq_bands, max_dim=1, max_edge_length=2.0, verbose=False):
+def process_file_features(
+    file_dir,
+    freq_bands,
+    max_dim=1,
+    max_edge_length=2.0,
+    validation_samples=VALIDATION_SAMPLES,
+    verbose=False,
+):
     file_features = {}
     metadata = {"n_windows": {}, "validation_issues": []}
     
@@ -330,9 +275,12 @@ def process_file_features(file_dir, freq_bands, max_dim=1, max_edge_length=2.0, 
             continue
         
 
-        is_valid, issues = validate_distance_matrix(distance_matrices[0], f"{band}[0]")
-        if not is_valid:
-            metadata["validation_issues"].extend([f"{band}: {i}" for i in issues])
+        sample_count = min(validation_samples, n_windows)
+        sample_indices = np.linspace(0, n_windows - 1, num=sample_count, dtype=int)
+        for idx in sample_indices:
+            is_valid, issues = validate_distance_matrix(distance_matrices[idx], f"{band}[{idx}]")
+            if not is_valid:
+                metadata["validation_issues"].extend([f"{band}[{idx}]: {i}" for i in issues])
 
         h0_features_list = []
         h1_features_list = []
@@ -376,28 +324,6 @@ def process_file_features(file_dir, freq_bands, max_dim=1, max_edge_length=2.0, 
     
     return file_features, metadata
 
-
-
-print("Prueba de Extracción de Características en Datos Reales")
-
-
-slow_dirs = list((GRAPHS_DIR / "slow").iterdir())
-if len(slow_dirs) > 0:
-    test_graph_dir = slow_dirs[0]
-    print(f"Probando en: {test_graph_dir.name}")
-    
-    features_test, metadata_test = process_file_features(
-        test_graph_dir, FREQ_BANDS, MAX_DIM, MAX_EDGE_LENGTH, verbose=True
-    )
-    
-    print("Resultados de extracción de características:")
-    print(f"  Total de características: {len(features_test)}")
-    print(f"  Ventanas por banda: {metadata_test['n_windows']}")
-    if metadata_test['validation_issues']:
-        print(f"  Problemas de validación: {metadata_test['validation_issues']}")
-    print(f"  Características de muestra: {list(features_test.keys())[:5]}")
-else:
-    print("No se encontraron datos en el directorio graphs/slow")
 
 
 def create_dataset(graphs_dir_slow, graphs_dir_fast, freq_bands, max_dim=1, max_edge_length=2.0):
@@ -472,273 +398,6 @@ def create_dataset(graphs_dir_slow, graphs_dir_fast, freq_bands, max_dim=1, max_
     
     return X, y, subjects, feature_names, all_filenames, all_metadata
 
-X, y, subjects, feature_names, filenames, all_metadata = create_dataset(
-    GRAPHS_DIR / "slow",
-    GRAPHS_DIR / "fast",
-    FREQ_BANDS,
-    MAX_DIM,
-    MAX_EDGE_LENGTH
-)
-
-# Guardar dataset
-np.save(FEATURES_DIR / "X.npy", X)
-np.save(FEATURES_DIR / "y.npy", y)
-np.save(FEATURES_DIR / "subjects.npy", subjects)
-
-with open(FEATURES_DIR / "feature_names.txt", "w") as f:
-    for name in feature_names:
-        f.write(f"{name}\n")
-
-with open(FEATURES_DIR / "filenames.txt", "w") as f:
-    for name in filenames:
-        f.write(f"{name}\n")
-
-print(f"\nDataset guardado en {FEATURES_DIR}")
-
-
-
-print("Preprocesamiento de Datos")
-
-
-
-nan_count = np.isnan(X).sum()
-inf_count = np.isinf(X).sum()
-print(f"  Valores NaN: {nan_count}")
-print(f"  Valores Inf: {inf_count}")
-
-nan_mask = np.isnan(X).any(axis=1)
-inf_mask = np.isinf(X).any(axis=1)
-valid_mask = ~(nan_mask | inf_mask)
-
-n_removed = (~valid_mask).sum()
-if n_removed > 0:
-    print(f"\nEliminando {n_removed} muestras con valores inválidos")
-    X = X[valid_mask]
-    y = y[valid_mask]
-    subjects = subjects[valid_mask]
-    filenames = [f for f, v in zip(filenames, valid_mask) if v]
-
-print(f"\nDataset limpio: {X.shape[0]} muestras, {X.shape[1]} características")
-
-print("\nEstadísticas de características:")
-print(f"  Valor mínimo: {X.min():.4f}")
-print(f"  Valor máximo: {X.max():.4f}")
-print(f"  Media: {X.mean():.4f}")
-print(f"  Desviación estándar: {X.std():.4f}")
-
-feature_stds = X.std(axis=0)
-constant_features = feature_stds < 1e-10
-n_constant = constant_features.sum()
-if n_constant > 0:
-    print(f"\nAdvertencia: {n_constant} características tienen varianza cero")
-    print("  Estas no serán informativas para la clasificación")
-    constant_names = [feature_names[i] for i in np.where(constant_features)[0]]
-    print(f" Características constantes: {constant_names[:5]}...")
-
-
-print("Análisis de Distribución de Sujetos")
-
-subject_df = pd.DataFrame({
-    "subject": subjects,
-    "label": y,
-    "label_name": ["lento" if label == 0 else "rapido" for label in y]
-})
-
-subject_counts = subject_df.groupby("subject").size()
-print("\nMuestras por sujeto:")
-print(f"  Media: {subject_counts.mean():.1f}")
-print(f"  Mediana: {subject_counts.median():.1f}")
-print(f"  Mínimo: {subject_counts.min()}")
-print(f"  Máximo: {subject_counts.max()}")
-
-subject_labels = subject_df.groupby("subject")["label"].agg(["count", "sum", "mean"])
-subject_labels.columns = ["total", "n_rapido", "prop_rapido"]
-subject_labels["n_lento"] = subject_labels["total"] - subject_labels["n_rapido"]
-
-print("\nDistribución de etiquetas por sujeto:")
-print(subject_labels.describe())
-
-mixed_subjects = subject_labels[(subject_labels["n_lento"] > 0) & (subject_labels["n_rapido"] > 0)]
-print(f"\nSujetos con ambas condiciones: {len(mixed_subjects)} / {len(subject_labels)}")
-
-fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-ax1 = axes[0]
-subject_counts.plot(kind="bar", ax=ax1, color="steelblue", alpha=0.7)
-ax1.set_xlabel("ID de Sujeto")
-ax1.set_ylabel("Número de Muestras")
-ax1.set_title("Muestras por Sujeto", fontweight="bold")
-ax1.axhline(subject_counts.mean(), color="red", linestyle="--", label=f"Media: {subject_counts.mean():.1f}")
-ax1.legend()
-ax1.tick_params(axis='x', rotation=45)
-
-ax2 = axes[1]
-subject_labels[["n_lento", "n_rapido"]].plot(kind="bar", stacked=True, ax=ax2, color=["blue", "orange"], alpha=0.7)
-ax2.set_xlabel("ID de Sujeto")
-ax2.set_ylabel("Número de Muestras")
-ax2.set_title("Distribución de Clases por Sujeto", fontweight="bold")
-ax2.legend(["Lento", "Rápido"])
-ax2.tick_params(axis='x', rotation=45)
-
-plt.tight_layout()
-plt.savefig(RESULTS_DIR / "subject_distribution.png", dpi=150)
-plt.show()
-
-
-
-
-gkf = GroupKFold(n_splits=N_SPLITS)
-
-
-for fold, (train_idx, test_idx) in enumerate(gkf.split(X, y, groups=subjects)):
-    train_subjects = set(subjects[train_idx])
-    test_subjects = set(subjects[test_idx])
-    overlap = train_subjects.intersection(test_subjects)
-    
-    print(f"Fold {fold + 1}:")
-    print(f"Entrenamiento: {len(train_idx)} muestras, {len(train_subjects)} sujetos")
-    print(f"Prueba: {len(test_idx)} muestras, {len(test_subjects)} sujetos")
-    print(f"Solapamiento de sujetos: {len(overlap)} (debería ser 0)")
-    
-    if len(overlap) > 0:
-        print(f"Advertencia: Solapamiento de sujetos detectado: {overlap}")
-    else:
-        print("    Sin solapamiento de sujetos - aislamiento apropiado")
-
-
-print("Entrenamiento y Evaluación del Modelo")
-
-pipeline = Pipeline([
-    ('scaler', StandardScaler()),
-    ('classifier', RandomForestClassifier(
-        n_estimators=100,
-        max_depth=10,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        random_state=RANDOM_STATE,
-        n_jobs=-1
-    ))
-])
-
-
-cv_scores = cross_val_score(
-    pipeline, X, y, groups=subjects, cv=gkf, scoring="accuracy"
-)
-
-print("\nResultados de validación cruzada:")
-print(f"  Precisión por fold: {cv_scores}")
-print(f"  Precisión media: {cv_scores.mean():.3f} +/- {cv_scores.std():.3f}")
-print(f"  Mín/Máx: {cv_scores.min():.3f} / {cv_scores.max():.3f}")
-
-y_pred_cv = cross_val_predict(pipeline, X, y, groups=subjects, cv=gkf)
-cv_f1 = f1_score(y, y_pred_cv, average="weighted")
-print(f"  Puntaje F1 (ponderado): {cv_f1:.3f}")
-
-y_proba_cv = cross_val_predict(pipeline, X, y, groups=subjects, cv=gkf, method="predict_proba")
-cv_auc = roc_auc_score(y, y_proba_cv[:, 1])
-print(f"ROC AUC: {cv_auc:.3f}")
-
-report=classification_report(y, y_pred_cv, target_names=["Lento", "Rápido"])
-print(report)
-report_df = pd.DataFrame(report.split('\n'))
-report_df.to_csv( "Reporte_resultados.csv", index=False)
-
-cm = confusion_matrix(y, y_pred_cv)
-
-fig, ax = plt.subplots(figsize=(8, 6))
-sns.heatmap(
-    cm,
-    annot=True,
-    fmt="d",
-    cmap="Blues",
-    xticklabels=["Lento", "Rápido"],
-    yticklabels=["Lento", "Rápido"],
-    ax=ax,
-    annot_kws={"size": 16}
-)
-ax.set_xlabel("Predicción", fontsize=12, fontweight="bold")
-ax.set_ylabel("Real", fontsize=12, fontweight="bold")
-ax.set_title("Matriz de Confusión (Cross Validation)", fontsize=14, fontweight="bold")
-
-
-textstr = f"Precisión de CV: {cv_scores.mean():.1%}\nPuntaje F1: {cv_f1:.3f}"
-props = dict(boxstyle="round", facecolor="wheat", alpha=0.8)
-ax.text(1.35, 0.5, textstr, transform=ax.transAxes, fontsize=12,
-        verticalalignment="center", bbox=props)
-
-plt.tight_layout()
-plt.savefig("Matriz_confusion_prueba.png", dpi=150)
-plt.show()
-
-
-
-print("Análisis de Importancia de Características")
-
-pipeline.fit(X, y)
-feature_importance = pipeline.named_steps['classifier'].feature_importances_
-
-importance_df = pd.DataFrame({
-    "feature": feature_names,
-    "importance": feature_importance
-}).sort_values("importance", ascending=False)
-
-importance_df["band"] = importance_df["feature"].apply(
-    lambda x: x.split("_")[0] if "_" in x else "unknown"
-)
-importance_df["dimension"] = importance_df["feature"].apply(
-    lambda x: "H0" if "_h0_" in x else "H1" if "_h1_" in x else "unknown"
-)
-
-print("\nCaracterísticas Más Importantes:")
-for i, row in importance_df.head(15).iterrows():
-    print(f"  {row['feature']}: {row['importance']:.4f}")
-
-fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-
-ax1 = axes[0]
-top_15 = importance_df.head(15)
-colors = ["blue" if "h0" in f else "orange" for f in top_15["feature"]]
-ax1.barh(range(15), top_15["importance"].values, color=colors, alpha=0.7)
-ax1.set_yticks(range(15))
-ax1.set_yticklabels(top_15["feature"].values, fontsize=9)
-ax1.set_xlabel("Importancia", fontsize=12)
-ax1.set_title("15 Características Más Importantes", fontsize=14, fontweight="bold")
-ax1.invert_yaxis()
-
-
-legend_elements = [Patch(facecolor="blue", alpha=0.7, label="H0 (componentes)"),
-                   Patch(facecolor="orange", alpha=0.7, label="H1 (ciclos)")]
-ax1.legend(handles=legend_elements, loc="lower right")
-
-ax2 = axes[1]
-band_importance = importance_df.groupby("band")["importance"].sum().sort_values(ascending=True)
-band_colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(band_importance)))
-ax2.barh(band_importance.index, band_importance.values, color=band_colors)
-ax2.set_xlabel("Importancia total", fontsize=12)
-ax2.set_title("Importancia de las Características por Banda de Frecuencia", fontsize=14, fontweight="bold")
-
-total_imp = band_importance.sum()
-for i, (band, imp) in enumerate(band_importance.items()):
-    ax2.text(imp + 0.01, i, f"{imp / total_imp * 100:.1f}%", va="center", fontsize=10)
-
-plt.tight_layout()
-plt.savefig(RESULTS_DIR / "feature_importance.png", dpi=150)
-plt.show()
-
-
-print("\nResumen por Banda:")
-band_summary = importance_df.groupby("band")["importance"].agg(["sum", "mean"]).sort_values("sum", ascending=False)
-band_summary["porcentaje"] = band_summary["sum"] / band_summary["sum"].sum() * 100
-print(band_summary.round(4))
-
-print("\nResumen por Dimensión:")
-dim_summary = importance_df.groupby("dimension")["importance"].agg(["sum", "mean"])
-dim_summary["porcentaje"] = dim_summary["sum"] / dim_summary["sum"].sum() * 100
-print(dim_summary.round(4))
-
-
-# Validación estadística
-
 def permutation_test_cv(X, y, subjects, model, cv, n_permutations=1000, random_state=42):
     observed_acc = cross_val_score(model, X, y, groups=subjects, cv=cv, scoring="accuracy").mean()
     
@@ -757,41 +416,6 @@ def permutation_test_cv(X, y, subjects, model, cv, n_permutations=1000, random_s
     effect_size = (observed_acc - null_dist.mean()) / null_dist.std()
     
     return observed_acc, null_dist, p_value, effect_size
-
-
-# Test de permutación
-
-observed_acc, null_dist, p_value, effect_size = permutation_test_cv(
-    X, y, subjects, pipeline, gkf, 
-    n_permutations=N_PERMUTATIONS, 
-    random_state=RANDOM_STATE)
-
-print(f"  Precisión de CV observada: {observed_acc:.4f} ({observed_acc:.1%})")
-print(f"  Media de distribución nula: {null_dist.mean():.4f} ({null_dist.mean():.1%})")
-print(f"  Desviación estándar de distribución nula: {null_dist.std():.4f}")
-print(f"  Valor p: {p_value:.6f}")
-print(f"  Tamaño de efecto (Cohen's d): {effect_size:.2f}")
-
-if abs(effect_size) < 0.2:
-    effect_interpretation = "despreciable"
-elif abs(effect_size) < 0.5:
-    effect_interpretation = "pequeña"
-elif abs(effect_size) < 0.8:
-    effect_interpretation = "mediana"
-else:
-    effect_interpretation = "grande"
-print(f"  Interpretación de efecto: {effect_interpretation}")
-
-alpha = 0.05
-if p_value < 0.001:
-    sig_level = "*** (p < 0.001)"
-elif p_value < 0.01:
-    sig_level = "** (p < 0.01)"
-elif p_value < 0.05:
-    sig_level = "* (p < 0.05)"
-else:
-    sig_level = "ns (p >= 0.05)"
-print(f"  Significancia: {sig_level}")
 
 
 # Intervalo de confianza bootstrap
@@ -834,132 +458,483 @@ def bootstrap_cv_score(X, y, groups, model, cv, n_bootstrap=1000, random_state=4
     
     return np.array(bootstrap_scores)
 
-bootstrap_accs = bootstrap_cv_score(
-    X, y, subjects, pipeline, gkf,
-    n_bootstrap=N_BOOTSTRAP,
-    random_state=RANDOM_STATE
-)
 
-ci_lower = np.percentile(bootstrap_accs, 2.5)
-ci_upper = np.percentile(bootstrap_accs, 97.5)
-ci_width = ci_upper - ci_lower
+def main():
+    warnings.filterwarnings("ignore")
+    plt.style.use("seaborn-v0_8-darkgrid")
+    sns.set_palette("husl")
+    np.random.seed(RANDOM_STATE)
 
-print(f"\nBootstrap Results ({len(bootstrap_accs)} iteraciones exitosas):")
-print(f"  Media de precisión: {bootstrap_accs.mean():.4f} ({bootstrap_accs.mean():.1%})")
-print(f"  Desviación estándar: {bootstrap_accs.std():.4f}")
-print(f"  Mediana: {np.median(bootstrap_accs):.4f}")
-print("95% Intervalo de confianza:")
-print(f"  [{ci_lower:.4f}, {ci_upper:.4f}]")
-print(f"  [{ci_lower:.1%}, {ci_upper:.1%}]")
-print(f"  Ancho: {ci_width:.4f} ({ci_width:.1%})")
+    print("Configuración:")
+    print(f"  Directorio de grafos: {GRAPHS_DIR}")
+    print(f"  Salida de características: {FEATURES_DIR}")
+    print(f"  Salida de resultados: {RESULTS_DIR}")
+    print("Bandas de frecuencia:")
+    for band, desc in FREQ_BAND_RANGES.items():
+        print(f"  {band}: {desc}")
+    print("Parámetros TDA:")
+    print(f"  Dimensión de homología máxima: H{MAX_DIM}")
+    print(f"  Longitud máxima de arista (filtración): {MAX_EDGE_LENGTH}")
+    print("\nParámetros de clasificación:")
+    print(f"  Folds de CV: {N_SPLITS}")
+    print(f"  Iteraciones de permutación: {N_PERMUTATIONS}")
+    print(f"  Iteraciones de bootstrap: {N_BOOTSTRAP}")
+    print(f"  Ventanas de validación por banda: {VALIDATION_SAMPLES}")
 
-if ci_lower > 0.5:
-    
-    print("El IC completo está por encima del nivel del azar (50%) - resultado robusto")
-else:
-    print("El IC incluye el nivel del azar (50%) - el resultado podría no ser robusto")
+    print("Prueba del Pipeline ")
+    test_dist = np.random.rand(47, 47)
+    test_dist = (test_dist + test_dist.T) / 2
+    np.fill_diagonal(test_dist, 0)
 
+    is_valid, issues = validate_distance_matrix(test_dist, "test")
+    print(f"Validación de matriz de distancia: {'APROBADA' if is_valid else 'FALLIDA'}")
+    if issues:
+        for issue in issues:
+            print(f"  - {issue}")
 
-### Visualización de los tests estadísticos
+    diagrams_test = compute_persistence_diagram(test_dist, MAX_DIM, MAX_EDGE_LENGTH)
+    print("Diagramas de persistencia calculados:")
+    print(f"  H0 (componentes conectadas): {len(diagrams_test[0])} características")
+    print(f"  H1 (ciclos/loops): {len(diagrams_test[1])} características")
 
+    features_h0 = extract_persistence_features(diagrams_test[0], "H0")
+    features_h1 = extract_persistence_features(diagrams_test[1], "H1")
+    print("Características extraídas:")
+    print(f"  H0: {len(features_h0)} características escalares")
+    print(f"  H1: {len(features_h1)} características escalares")
+    print(f"  Total por banda: {len(features_h0) + len(features_h1)} características")
 
-fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    fig, ax = plt.subplots(figsize=(8, 8))
+    plot_persistence_diagram(diagrams_test, "Diagrama de Persistencia de Muestra (Datos Aleatorios)", ax)
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "sample_persistence_diagram.png", dpi=150)
+    plt.show()
 
+    print("Explicación del diagrama de persistencia:")
+    print("  - Cada punto representa una característica topológica")
+    print("  - Eje X (nacimiento): umbral de distancia donde aparece la característica")
+    print("  - Eje Y (muerte): umbral de distancia donde desaparece la característica")
+    print("  - Distancia desde diagonal = persistencia = importancia")
+    print("  - H0: componentes conectadas (cómo se fragmenta el grafo)")
+    print("  - H1: ciclos/loops (patrones de conectividad circular)")
 
-ax1 = axes[0]
-ax1.hist(null_dist, bins=50, alpha=0.7, color="gray", edgecolor="black", density=True,
-         label=f"Null distribution (n={N_PERMUTATIONS})")
-ax1.axvline(observed_acc, color="red", linewidth=3, linestyle="--",
-            label=f"Observed ({observed_acc:.1%})")
-ax1.axvline(null_dist.mean(), color="blue", linewidth=2, linestyle=":",
-            label=f"Null mean ({null_dist.mean():.1%})")
-ax1.axvline(0.5, color="green", linewidth=2, linestyle="-.",
-            label="Chance (50%)")
+    print("Prueba de Extracción de Características en Datos Reales")
+    slow_dirs = list((GRAPHS_DIR / "slow").iterdir())
+    if len(slow_dirs) > 0:
+        test_graph_dir = slow_dirs[0]
+        print(f"Probando en: {test_graph_dir.name}")
 
-ax1.set_xlabel("Cross-Validation Accuracy", fontsize=12, fontweight="bold")
-ax1.set_ylabel("Density", fontsize=12, fontweight="bold")
-ax1.set_title("Permutation Test: Null Distribution", fontsize=14, fontweight="bold")
-ax1.legend(loc="upper left", fontsize=10)
-ax1.grid(True, alpha=0.3)
+        features_test, metadata_test = process_file_features(
+            test_graph_dir,
+            FREQ_BANDS,
+            MAX_DIM,
+            MAX_EDGE_LENGTH,
+            validation_samples=VALIDATION_SAMPLES,
+            verbose=True,
+        )
 
+        print("Resultados de extracción de características:")
+        print(f"  Total de características: {len(features_test)}")
+        print(f"  Ventanas por banda: {metadata_test['n_windows']}")
+        if metadata_test['validation_issues']:
+            print(f"  Problemas de validación: {metadata_test['validation_issues']}")
+        print(f"  Características de muestra: {list(features_test.keys())[:5]}")
+    else:
+        print("No se encontraron datos en el directorio graphs/slow")
 
-textstr = f"p = {p_value:.4f}\nCohen's d = {effect_size:.2f}\n{sig_level}"
-props = dict(boxstyle="round", facecolor="wheat", alpha=0.9)
-ax1.text(0.97, 0.97, textstr, transform=ax1.transAxes, fontsize=11,
-         verticalalignment="top", horizontalalignment="right", bbox=props)
+    X, y, subjects, feature_names, filenames, all_metadata = create_dataset(
+        GRAPHS_DIR / "slow",
+        GRAPHS_DIR / "fast",
+        FREQ_BANDS,
+        MAX_DIM,
+        MAX_EDGE_LENGTH,
+    )
 
-ax2 = axes[1]
-ax2.hist(bootstrap_accs, bins=50, alpha=0.7, color="steelblue", edgecolor="black", density=True,
-         label=f"Bootstrap distribution (n={len(bootstrap_accs)})")
-ax2.axvline(observed_acc, color="red", linewidth=3, linestyle="--",
-            label=f"Observed ({observed_acc:.1%})")
-ax2.axvline(ci_lower, color="orange", linewidth=2, linestyle=":",
-            label=f"95% CI: [{ci_lower:.1%}, {ci_upper:.1%}]")
-ax2.axvline(ci_upper, color="orange", linewidth=2, linestyle=":")
-ax2.axvspan(ci_lower, ci_upper, alpha=0.2, color="orange")
-ax2.axvline(0.5, color="green", linewidth=2, linestyle="-.", label="Chance (50%)")
+    np.save(FEATURES_DIR / "X.npy", X)
+    np.save(FEATURES_DIR / "y.npy", y)
+    np.save(FEATURES_DIR / "subjects.npy", subjects)
 
-ax2.set_xlabel("Cross-Validation Accuracy", fontsize=12, fontweight="bold")
-ax2.set_ylabel("Density", fontsize=12, fontweight="bold")
-ax2.set_title("Bootstrap: 95% Confidence Interval", fontsize=14, fontweight="bold")
-ax2.legend(loc="upper left", fontsize=10)
-ax2.grid(True, alpha=0.3)
+    with open(FEATURES_DIR / "feature_names.txt", "w") as f:
+        for name in feature_names:
+            f.write(f"{name}\n")
 
-textstr = f"95% CI:\n[{ci_lower:.1%}, {ci_upper:.1%}]\nWidth: {ci_width:.1%}"
-props = dict(boxstyle="round", facecolor="lightblue", alpha=0.9)
-ax2.text(0.97, 0.97, textstr, transform=ax2.transAxes, fontsize=11,
-         verticalalignment="top", horizontalalignment="right", bbox=props)
+    with open(FEATURES_DIR / "filenames.txt", "w") as f:
+        for name in filenames:
+            f.write(f"{name}\n")
 
-plt.tight_layout()
-plt.savefig(RESULTS_DIR / "statistical_tests.png", dpi=150)
-plt.show()
+    print(f"\nDataset guardado en {FEATURES_DIR}")
 
+    print("Preprocesamiento de Datos")
+    nan_count = np.isnan(X).sum()
+    inf_count = np.isinf(X).sum()
+    print(f"  Valores NaN: {nan_count}")
+    print(f"  Valores Inf: {inf_count}")
 
-results_summary = {
-    "Métrica": [
-        "Tamaño del dataset",
-        "Número de características",
-        "Número de sujetos",
-        "Balance de clases (Lento/Rápido)",
-        "",
-        "Precisión CV (GroupKFold-5)",
-        "Puntaje F1 (ponderado)",
-        "Línea base (azar)",
-        "Mejora sobre línea base",
-        "",
-        "Valor-p (test de permutación)",
-        "Tamaño del efecto (d de Cohen)",
-        "Límite inferior IC 95%",
-        "Límite superior IC 95%",
-        "IC sobre azar?",
-    ],
-    "Valor": [
-        f"{X.shape[0]} muestras",
-        f"{X.shape[1]} características",
-        f"{len(np.unique(subjects))} sujetos",
-        f"{np.sum(y == 0)} / {np.sum(y == 1)}",
-        "",
-        f"{cv_scores.mean():.1%} ± {cv_scores.std():.1%}",
-        f"{cv_f1:.3f}",
-        "50%",
-        f"+{(cv_scores.mean() - 0.5) * 100:.1f} puntos porcentuales",
-        "",
-        f"{p_value:.6f} {sig_level}",
-        f"{effect_size:.2f} ({effect_interpretation})",
-        f"{ci_lower:.1%}",
-        f"{ci_upper:.1%}",
-        "Sí" if ci_lower > 0.5 else "No",
-    ],
-}
+    nan_mask = np.isnan(X).any(axis=1)
+    inf_mask = np.isinf(X).any(axis=1)
+    valid_mask = ~(nan_mask | inf_mask)
 
-df_results = pd.DataFrame(results_summary)
-print(df_results.to_string(index=False))
+    n_removed = (~valid_mask).sum()
+    if n_removed > 0:
+        print(f"\nEliminando {n_removed} muestras con valores inválidos")
+        X = X[valid_mask]
+        y = y[valid_mask]
+        subjects = subjects[valid_mask]
+        filenames = [f for f, v in zip(filenames, valid_mask) if v]
 
-print("Bandas de frecuencia más discriminativas")
-print(band_summary.round(3).to_string())
+    print(f"\nDataset limpio: {X.shape[0]} muestras, {X.shape[1]} características")
 
+    print("\nEstadísticas de características:")
+    print(f"  Valor mínimo: {X.min():.4f}")
+    print(f"  Valor máximo: {X.max():.4f}")
+    print(f"  Media: {X.mean():.4f}")
+    print(f"  Desviación estándar: {X.std():.4f}")
 
-print(f"""
+    feature_stds = X.std(axis=0)
+    constant_features = feature_stds < 1e-10
+    n_constant = constant_features.sum()
+    if n_constant > 0:
+        print(f"\nAdvertencia: {n_constant} características tienen varianza cero")
+        print("  Estas no serán informativas para la clasificación")
+        constant_names = [feature_names[i] for i in np.where(constant_features)[0]]
+        print(f" Características constantes: {constant_names[:5]}...")
+
+    print("Análisis de Distribución de Sujetos")
+    subject_df = pd.DataFrame({
+        "subject": subjects,
+        "label": y,
+        "label_name": ["lento" if label == 0 else "rapido" for label in y],
+    })
+
+    subject_counts = subject_df.groupby("subject").size()
+    print("\nMuestras por sujeto:")
+    print(f"  Media: {subject_counts.mean():.1f}")
+    print(f"  Mediana: {subject_counts.median():.1f}")
+    print(f"  Mínimo: {subject_counts.min()}")
+    print(f"  Máximo: {subject_counts.max()}")
+
+    subject_labels = subject_df.groupby("subject")["label"].agg(["count", "sum", "mean"])
+    subject_labels.columns = ["total", "n_rapido", "prop_rapido"]
+    subject_labels["n_lento"] = subject_labels["total"] - subject_labels["n_rapido"]
+
+    print("\nDistribución de etiquetas por sujeto:")
+    print(subject_labels.describe())
+
+    mixed_subjects = subject_labels[(subject_labels["n_lento"] > 0) & (subject_labels["n_rapido"] > 0)]
+    print(f"\nSujetos con ambas condiciones: {len(mixed_subjects)} / {len(subject_labels)}")
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    ax1 = axes[0]
+    subject_counts.plot(kind="bar", ax=ax1, color="steelblue", alpha=0.7)
+    ax1.set_xlabel("ID de Sujeto")
+    ax1.set_ylabel("Número de Muestras")
+    ax1.set_title("Muestras por Sujeto", fontweight="bold")
+    ax1.axhline(subject_counts.mean(), color="red", linestyle="--", label=f"Media: {subject_counts.mean():.1f}")
+    ax1.legend()
+    ax1.tick_params(axis='x', rotation=45)
+
+    ax2 = axes[1]
+    subject_labels[["n_lento", "n_rapido"]].plot(kind="bar", stacked=True, ax=ax2, color=["blue", "orange"], alpha=0.7)
+    ax2.set_xlabel("ID de Sujeto")
+    ax2.set_ylabel("Número de Muestras")
+    ax2.set_title("Distribución de Clases por Sujeto", fontweight="bold")
+    ax2.legend(["Lento", "Rápido"])
+    ax2.tick_params(axis='x', rotation=45)
+
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "subject_distribution.png", dpi=150)
+    plt.show()
+
+    gkf = GroupKFold(n_splits=N_SPLITS)
+
+    for fold, (train_idx, test_idx) in enumerate(gkf.split(X, y, groups=subjects)):
+        train_subjects = set(subjects[train_idx])
+        test_subjects = set(subjects[test_idx])
+        overlap = train_subjects.intersection(test_subjects)
+
+        print(f"Fold {fold + 1}:")
+        print(f"Entrenamiento: {len(train_idx)} muestras, {len(train_subjects)} sujetos")
+        print(f"Prueba: {len(test_idx)} muestras, {len(test_subjects)} sujetos")
+        print(f"Solapamiento de sujetos: {len(overlap)} (debería ser 0)")
+
+        if len(overlap) > 0:
+            print(f"Advertencia: Solapamiento de sujetos detectado: {overlap}")
+        else:
+            print("    Sin solapamiento de sujetos - aislamiento apropiado")
+
+    print("Entrenamiento y Evaluación del Modelo")
+    pipeline = Pipeline([
+        ('scaler', StandardScaler()),
+        ('classifier', RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
+            min_samples_split=5,
+            min_samples_leaf=2,
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+        )),
+    ])
+
+    cv_scores = cross_val_score(
+        pipeline, X, y, groups=subjects, cv=gkf, scoring="accuracy"
+    )
+
+    print("\nResultados de validación cruzada:")
+    print(f"  Precisión por fold: {cv_scores}")
+    print(f"  Precisión media: {cv_scores.mean():.3f} +/- {cv_scores.std():.3f}")
+    print(f"  Mín/Máx: {cv_scores.min():.3f} / {cv_scores.max():.3f}")
+
+    y_pred_cv = cross_val_predict(pipeline, X, y, groups=subjects, cv=gkf)
+    cv_f1 = f1_score(y, y_pred_cv, average="weighted")
+    print(f"  Puntaje F1 (ponderado): {cv_f1:.3f}")
+
+    y_proba_cv = cross_val_predict(pipeline, X, y, groups=subjects, cv=gkf, method="predict_proba")
+    cv_auc = roc_auc_score(y, y_proba_cv[:, 1])
+    print(f"ROC AUC: {cv_auc:.3f}")
+
+    report = classification_report(y, y_pred_cv, target_names=["Lento", "Rápido"])
+    print(report)
+    report_df = pd.DataFrame(report.split('\n'))
+    report_df.to_csv(RESULTS_DIR / "Reporte_resultados.csv", index=False)
+
+    cm = confusion_matrix(y, y_pred_cv)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(
+        cm,
+        annot=True,
+        fmt="d",
+        cmap="Blues",
+        xticklabels=["Lento", "Rápido"],
+        yticklabels=["Lento", "Rápido"],
+        ax=ax,
+        annot_kws={"size": 16},
+    )
+    ax.set_xlabel("Predicción", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Real", fontsize=12, fontweight="bold")
+    ax.set_title("Matriz de Confusión (Cross Validation)", fontsize=14, fontweight="bold")
+
+    textstr = f"Precisión de CV: {cv_scores.mean():.1%}\nPuntaje F1: {cv_f1:.3f}"
+    props = dict(boxstyle="round", facecolor="wheat", alpha=0.8)
+    ax.text(1.35, 0.5, textstr, transform=ax.transAxes, fontsize=12,
+            verticalalignment="center", bbox=props)
+
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "Matriz_confusion_prueba.png", dpi=150)
+    plt.show()
+
+    print("Análisis de Importancia de Características")
+    pipeline.fit(X, y)
+    feature_importance = pipeline.named_steps['classifier'].feature_importances_
+
+    importance_df = pd.DataFrame({
+        "feature": feature_names,
+        "importance": feature_importance,
+    }).sort_values("importance", ascending=False)
+
+    importance_df["band"] = importance_df["feature"].apply(
+        lambda x: x.split("_")[0] if "_" in x else "unknown"
+    )
+    importance_df["dimension"] = importance_df["feature"].apply(
+        lambda x: "H0" if "_h0_" in x else "H1" if "_h1_" in x else "unknown"
+    )
+
+    print("\nCaracterísticas Más Importantes:")
+    for _, row in importance_df.head(15).iterrows():
+        print(f"  {row['feature']}: {row['importance']:.4f}")
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+    ax1 = axes[0]
+    top_15 = importance_df.head(15)
+    colors = ["blue" if "h0" in f else "orange" for f in top_15["feature"]]
+    ax1.barh(range(15), top_15["importance"].values, color=colors, alpha=0.7)
+    ax1.set_yticks(range(15))
+    ax1.set_yticklabels(top_15["feature"].values, fontsize=9)
+    ax1.set_xlabel("Importancia", fontsize=12)
+    ax1.set_title("15 Características Más Importantes", fontsize=14, fontweight="bold")
+    ax1.invert_yaxis()
+
+    legend_elements = [Patch(facecolor="blue", alpha=0.7, label="H0 (componentes)"),
+                       Patch(facecolor="orange", alpha=0.7, label="H1 (ciclos)")]
+    ax1.legend(handles=legend_elements, loc="lower right")
+
+    ax2 = axes[1]
+    band_importance = importance_df.groupby("band")["importance"].sum().sort_values(ascending=True)
+    band_colors = plt.cm.viridis(np.linspace(0.2, 0.8, len(band_importance)))
+    ax2.barh(band_importance.index, band_importance.values, color=band_colors)
+    ax2.set_xlabel("Importancia total", fontsize=12)
+    ax2.set_title("Importancia de las Características por Banda de Frecuencia", fontsize=14, fontweight="bold")
+
+    total_imp = band_importance.sum()
+    for i, (band, imp) in enumerate(band_importance.items()):
+        ax2.text(imp + 0.01, i, f"{imp / total_imp * 100:.1f}%", va="center", fontsize=10)
+
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "feature_importance.png", dpi=150)
+    plt.show()
+
+    print("\nResumen por Banda:")
+    band_summary = importance_df.groupby("band")["importance"].agg(["sum", "mean"]).sort_values("sum", ascending=False)
+    band_summary["porcentaje"] = band_summary["sum"] / band_summary["sum"].sum() * 100
+    print(band_summary.round(4))
+
+    print("\nResumen por Dimensión:")
+    dim_summary = importance_df.groupby("dimension")["importance"].agg(["sum", "mean"])
+    dim_summary["porcentaje"] = dim_summary["sum"] / dim_summary["sum"].sum() * 100
+    print(dim_summary.round(4))
+
+    observed_acc, null_dist, p_value, effect_size = permutation_test_cv(
+        X, y, subjects, pipeline, gkf,
+        n_permutations=N_PERMUTATIONS,
+        random_state=RANDOM_STATE,
+    )
+
+    print(f"  Precisión de CV observada: {observed_acc:.4f} ({observed_acc:.1%})")
+    print(f"  Media de distribución nula: {null_dist.mean():.4f} ({null_dist.mean():.1%})")
+    print(f"  Desviación estándar de distribución nula: {null_dist.std():.4f}")
+    print(f"  Valor p: {p_value:.6f}")
+    print(f"  Tamaño de efecto (Cohen's d): {effect_size:.2f}")
+
+    if abs(effect_size) < 0.2:
+        effect_interpretation = "despreciable"
+    elif abs(effect_size) < 0.5:
+        effect_interpretation = "pequeña"
+    elif abs(effect_size) < 0.8:
+        effect_interpretation = "mediana"
+    else:
+        effect_interpretation = "grande"
+    print(f"  Interpretación de efecto: {effect_interpretation}")
+
+    alpha = 0.05
+    if p_value < 0.001:
+        sig_level = "*** (p < 0.001)"
+    elif p_value < 0.01:
+        sig_level = "** (p < 0.01)"
+    elif p_value < 0.05:
+        sig_level = "* (p < 0.05)"
+    else:
+        sig_level = "ns (p >= 0.05)"
+    print(f"  Significancia: {sig_level}")
+
+    bootstrap_accs = bootstrap_cv_score(
+        X, y, subjects, pipeline, gkf,
+        n_bootstrap=N_BOOTSTRAP,
+        random_state=RANDOM_STATE,
+    )
+
+    ci_lower = np.percentile(bootstrap_accs, 2.5)
+    ci_upper = np.percentile(bootstrap_accs, 97.5)
+    ci_width = ci_upper - ci_lower
+
+    print(f"\nBootstrap Results ({len(bootstrap_accs)} iteraciones exitosas):")
+    print(f"  Media de precisión: {bootstrap_accs.mean():.4f} ({bootstrap_accs.mean():.1%})")
+    print(f"  Desviación estándar: {bootstrap_accs.std():.4f}")
+    print(f"  Mediana: {np.median(bootstrap_accs):.4f}")
+    print("95% Intervalo de confianza:")
+    print(f"  [{ci_lower:.4f}, {ci_upper:.4f}]")
+    print(f"  [{ci_lower:.1%}, {ci_upper:.1%}]")
+    print(f"  Ancho: {ci_width:.4f} ({ci_width:.1%})")
+
+    if ci_lower > 0.5:
+        print("El IC completo está por encima del nivel del azar (50%) - resultado robusto")
+    else:
+        print("El IC incluye el nivel del azar (50%) - el resultado podría no ser robusto")
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+
+    ax1 = axes[0]
+    ax1.hist(null_dist, bins=50, alpha=0.7, color="gray", edgecolor="black", density=True,
+             label=f"Null distribution (n={N_PERMUTATIONS})")
+    ax1.axvline(observed_acc, color="red", linewidth=3, linestyle="--",
+                label=f"Observed ({observed_acc:.1%})")
+    ax1.axvline(null_dist.mean(), color="blue", linewidth=2, linestyle=":",
+                label=f"Null mean ({null_dist.mean():.1%})")
+    ax1.axvline(0.5, color="green", linewidth=2, linestyle="-.",
+                label="Chance (50%)")
+
+    ax1.set_xlabel("Cross-Validation Accuracy", fontsize=12, fontweight="bold")
+    ax1.set_ylabel("Density", fontsize=12, fontweight="bold")
+    ax1.set_title("Permutation Test: Null Distribution", fontsize=14, fontweight="bold")
+    ax1.legend(loc="upper left", fontsize=10)
+    ax1.grid(True, alpha=0.3)
+
+    textstr = f"p = {p_value:.4f}\nCohen's d = {effect_size:.2f}\n{sig_level}"
+    props = dict(boxstyle="round", facecolor="wheat", alpha=0.9)
+    ax1.text(0.97, 0.97, textstr, transform=ax1.transAxes, fontsize=11,
+             verticalalignment="top", horizontalalignment="right", bbox=props)
+
+    ax2 = axes[1]
+    ax2.hist(bootstrap_accs, bins=50, alpha=0.7, color="steelblue", edgecolor="black", density=True,
+             label=f"Bootstrap distribution (n={len(bootstrap_accs)})")
+    ax2.axvline(observed_acc, color="red", linewidth=3, linestyle="--",
+                label=f"Observed ({observed_acc:.1%})")
+    ax2.axvline(ci_lower, color="orange", linewidth=2, linestyle=":",
+                label=f"95% CI: [{ci_lower:.1%}, {ci_upper:.1%}]")
+    ax2.axvline(ci_upper, color="orange", linewidth=2, linestyle=":")
+    ax2.axvspan(ci_lower, ci_upper, alpha=0.2, color="orange")
+    ax2.axvline(0.5, color="green", linewidth=2, linestyle="-.", label="Chance (50%)")
+
+    ax2.set_xlabel("Cross-Validation Accuracy", fontsize=12, fontweight="bold")
+    ax2.set_ylabel("Density", fontsize=12, fontweight="bold")
+    ax2.set_title("Bootstrap: 95% Confidence Interval", fontsize=14, fontweight="bold")
+    ax2.legend(loc="upper left", fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    textstr = f"95% CI:\n[{ci_lower:.1%}, {ci_upper:.1%}]\nWidth: {ci_width:.1%}"
+    props = dict(boxstyle="round", facecolor="lightblue", alpha=0.9)
+    ax2.text(0.97, 0.97, textstr, transform=ax2.transAxes, fontsize=11,
+             verticalalignment="top", horizontalalignment="right", bbox=props)
+
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "statistical_tests.png", dpi=150)
+    plt.show()
+
+    results_summary = {
+        "Métrica": [
+            "Tamaño del dataset",
+            "Número de características",
+            "Número de sujetos",
+            "Balance de clases (Lento/Rápido)",
+            "",
+            "Precisión CV (GroupKFold-5)",
+            "Puntaje F1 (ponderado)",
+            "Línea base (azar)",
+            "Mejora sobre línea base",
+            "",
+            "Valor-p (test de permutación)",
+            "Tamaño del efecto (d de Cohen)",
+            "Límite inferior IC 95%",
+            "Límite superior IC 95%",
+            "IC sobre azar?",
+        ],
+        "Valor": [
+            f"{X.shape[0]} muestras",
+            f"{X.shape[1]} características",
+            f"{len(np.unique(subjects))} sujetos",
+            f"{np.sum(y == 0)} / {np.sum(y == 1)}",
+            "",
+            f"{cv_scores.mean():.1%} ± {cv_scores.std():.1%}",
+            f"{cv_f1:.3f}",
+            "50%",
+            f"+{(cv_scores.mean() - 0.5) * 100:.1f} puntos porcentuales",
+            "",
+            f"{p_value:.6f} {sig_level}",
+            f"{effect_size:.2f} ({effect_interpretation})",
+            f"{ci_lower:.1%}",
+            f"{ci_upper:.1%}",
+            "Sí" if ci_lower > 0.5 else "No",
+        ],
+    }
+
+    df_results = pd.DataFrame(results_summary)
+    print(df_results.to_string(index=False))
+
+    print("Bandas de frecuencia más discriminativas")
+    print(band_summary.round(3).to_string())
+
+    print(f"""
 Resultados:
   - Precisión validada cruzadamente: {cv_scores.mean():.1%} (azar = 50%)
   - Esto es {(cv_scores.mean() - 0.5) * 100:.1f} puntos porcentuales sobre el azar
@@ -968,23 +943,22 @@ Resultados:
   - IC 95% = [{ci_lower:.1%}, {ci_upper:.1%}]
 """)
 
+    results_dict = {
+        "precision_cv_media": cv_scores.mean(),
+        "precision_cv_std": cv_scores.std(),
+        "puntaje_f1_cv": cv_f1,
+        "valor_p": p_value,
+        "tamaño_efecto": effect_size,
+        "ic_inferior": ci_lower,
+        "ic_superior": ci_upper,
+        "n_muestras": X.shape[0],
+        "n_caracteristicas": X.shape[1],
+        "n_sujetos": len(np.unique(subjects)),
+    }
 
-results_dict = {
-    "precision_cv_media": cv_scores.mean(),
-    "precision_cv_std": cv_scores.std(),
-    "puntaje_f1_cv": cv_f1,
-    "valor_p": p_value,
-    "tamaño_efecto": effect_size,
-    "ic_inferior": ci_lower,
-    "ic_superior": ci_upper,
-    "n_muestras": X.shape[0],
-    "n_caracteristicas": X.shape[1],
-    "n_sujetos": len(np.unique(subjects))
-}
-
-# Guardar como JSON
-with open(RESULTS_DIR / "results_summary.json", "w") as f:
-    json.dump(results_dict, f, indent=2, ensure_ascii=False)
+    with open(RESULTS_DIR / "results_summary.json", "w") as f:
+        json.dump(results_dict, f, indent=2, ensure_ascii=False)
 
 
-
+if __name__ == "__main__":
+    main()
