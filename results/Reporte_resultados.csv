@@ -1,0 +1,10 @@
+0
+              precision    recall  f1-score   support
+""
+       Lento       0.92      0.86      0.89       710
+      Rápido       0.87      0.92      0.90       706
+""
+    accuracy                           0.89      1416
+   macro avg       0.89      0.89      0.89      1416
+weighted avg       0.89      0.89      0.89      1416
+""

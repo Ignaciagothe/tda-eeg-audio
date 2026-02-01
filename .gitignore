@@ -1,53 +1,10 @@
-data/fast/*.mat
-data/slow/*.mat
-data/preprocessed/*
-data/features/*
-data/graphs/*
+.DS_Store
+
+data/
+
 graphs/
 features/
-raw_data/
 preprocessed/
 
 *.mat
 *.npy
-
-# ============================================
-# PYTHON
-# ============================================
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-
-.DS_Store
-.AppleDouble
-.LSOverride
-
-
-
-# ============================================
-# ARCHIVOS TEMPORALES Y BACKUPS
-# ============================================
-*.tmp
-*.temp
-*.bak
-*.backup
-*.old
-tmp/
-temp/
-.cache/
-
-# ============================================
-# ARCHIVOS COMPRIMIDOS GRANDES
-# ============================================
-*.zip
-*.tar
-*.tar.gz
-*.tgz
-*.rar
-*.7z
-*.gz
-*.bz2
-
-
