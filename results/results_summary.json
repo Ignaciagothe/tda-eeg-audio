@@ -1,0 +1,13 @@
+{
+  "precision_cv_media": 0.8927598475328745,
+  "precision_cv_std": 0.01665042361668624,
+  "puntaje_f1_cv": 0.8925698606395945,
+  "valor_p": 0.000999000999000999,
+  "tamaño_efecto": 23.29824667852312,
+  "ic_inferior": 0.9210505310699437,
+  "ic_superior": 0.9641341793717704,
+  "n_muestras": 1416,
+  "n_caracteristicas": 220,
+  "n_sujetos": 45,
+  "nivel_evidencia": "FUERTE"
+}
