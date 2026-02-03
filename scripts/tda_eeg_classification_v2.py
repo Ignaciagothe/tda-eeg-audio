@@ -330,9 +330,16 @@ def process_file_features(file_dir, freq_bands, max_dim=1, max_edge_length=2.0, 
             continue
         
 
-        is_valid, issues = validate_distance_matrix(distance_matrices[0], f"{band}[0]")
-        if not is_valid:
-            metadata["validation_issues"].extend([f"{band}: {i}" for i in issues])
+        max_validation_windows = 10
+        n_validation = min(n_windows, max_validation_windows)
+        for window_idx in range(n_validation):
+            is_valid, issues = validate_distance_matrix(
+                distance_matrices[window_idx], f"{band}[{window_idx}]"
+            )
+            if not is_valid:
+                metadata["validation_issues"].extend(
+                    [f"{band}[{window_idx}]: {issue}" for issue in issues]
+                )
 
         h0_features_list = []
         h1_features_list = []
@@ -985,6 +992,5 @@ results_dict = {
 # Guardar como JSON
 with open(RESULTS_DIR / "results_summary.json", "w") as f:
     json.dump(results_dict, f, indent=2, ensure_ascii=False)
-
 
 
