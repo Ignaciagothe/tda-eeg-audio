@@ -13,21 +13,16 @@ Topological Data Analysis (TDA) of infant EEG functional connectivity during spe
 
 ```
 tda-eeg-audio/
-├── data/                   # Raw .mat files (slow/ and fast/)
+├── data/                   # Raw data .mat files (slow/ and fast/)
 ├── preprocessed/           # Band-filtered windows
 ├── graphs/                 # Connectivity distance matrices per recording
-├── features/               # Cached TDA features (X.npy, y.npy, subjects.npy)
-├── results/                # JSON results + figures
+├── features/               #  TDA features (X.npy, y.npy, subjects.npy)
+├── results/                #  results + figures
 ├── scripts/
 │   ├── tda_eeg_audio_comparison.py   # Analysis 2: Wasserstein EEG-audio comparison
 │   ├── classification_rerun.py       # Analysis 1: RF classification
-│   └── tda_eeg_classification_v2.py  # Feature extraction (legacy)
-├── notebooks/              # Pipeline notebooks (EDA, preprocessing, graph construction)
-├── paper/
-│   ├── paper_revised.tex   # Current manuscript
-│   ├── paper_revised.pdf   # Compiled PDF
-│   ├── respuesta_comentarios.md
-│   └── figures/            # Publication figures
+│   └── tda_eeg_classification_v2.py  # Feature extraction (old)
+├── notebooks/                # Pipeline notebooks (EDA, preprocessing, graph construction)
 ├── requirements.txt
 └── README.md
 ```
@@ -44,14 +39,13 @@ tda-eeg-audio/
 # 2. Feature extraction
 python scripts/tda_eeg_classification_v2.py    # -> features/
 
-# 3. EEG-audio Wasserstein comparison (~10 min)
+# 3. EEG-audio Wasserstein comparison 
 python scripts/tda_eeg_audio_comparison.py     # -> results/eeg_audio_tda_comparison.json
 
-# 4. Classification with permutation test (~15 min)
+# 4. Classification with permutation test 
 python scripts/classification_rerun.py         # -> results/results_summary.json
 
-# 5. Matched-vs-mismatched control (~10 min)
-python matched_vs_mismatched.py                # -> results/matched_vs_mismatched.json
+
 ```
 
 
@@ -63,4 +57,3 @@ python matched_vs_mismatched.py                # -> results/matched_vs_mismatche
 4. **Audio TDA**: Hilbert envelope -> per-band filtering -> Takens embedding (dim=3) -> persistence diagrams.
 5. **Classification**: Random Forest (100 trees, max_depth=10), StratifiedGroupKFold (k=5), permutation test (1000 iter).
 6. **EEG-audio coupling**: 1-Wasserstein distance between EEG and audio persistence diagrams. Wilcoxon signed-rank, FDR-corrected.
-7. **Matched-vs-mismatched control**: W(EEG, Audio_same) vs W(EEG, Audio_opposite) per subject per band.
