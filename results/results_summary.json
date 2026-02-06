@@ -1,13 +1,145 @@
 {
-  "precision_cv_media": 0.8927598475328745,
-  "precision_cv_std": 0.01665042361668624,
-  "puntaje_f1_cv": 0.8925698606395945,
-  "valor_p": 0.000999000999000999,
-  "tamaño_efecto": 23.29824667852312,
-  "ic_inferior": 0.9210505310699437,
-  "ic_superior": 0.9641341793717704,
-  "n_muestras": 1416,
-  "n_caracteristicas": 220,
-  "n_sujetos": 45,
-  "nivel_evidencia": "FUERTE"
+  "cv_accuracy_mean": 0.7314075827298001,
+  "cv_accuracy_std": 0.021282168021869798,
+  "cv_scores_per_fold": [
+    0.7198443579766537,
+    0.75,
+    0.7167235494880546,
+    0.762987012987013,
+    0.7074829931972789
+  ],
+  "f1_score": 0.7315184483457458,
+  "roc_auc": 0.8037585285081594,
+  "p_value": 0.000999000999000999,
+  "effect_size_cohens_d": 15.209377565522308,
+  "significance_level": "*** (p < 0.001)",
+  "ci_lower_bootstrap": 0.6976116200770477,
+  "ci_upper_bootstrap": 0.7563365615337675,
+  "ci_method": "subject-level bootstrap (2000 iterations)",
+  "confusion_matrix": [
+    [
+      504,
+      206
+    ],
+    [
+      174,
+      532
+    ]
+  ],
+  "slow_accuracy_pct": 70.98591549295776,
+  "fast_accuracy_pct": 75.3541076487252,
+  "n_samples": 1416,
+  "n_features": 220,
+  "n_subjects": 45,
+  "n_slow": 710,
+  "n_fast": 706,
+  "model": "RandomForestClassifier",
+  "cv_method": "StratifiedGroupKFold",
+  "n_splits": 5,
+  "n_permutations": 1000,
+  "band_importance": {
+    "gamma": {
+      "importance": 0.445130865871499,
+      "pct": 44.51308658714991
+    },
+    "delta": {
+      "importance": 0.14430382036980624,
+      "pct": 14.430382036980626
+    },
+    "alpha": {
+      "importance": 0.14328432127392832,
+      "pct": 14.328432127392835
+    },
+    "beta": {
+      "importance": 0.13870789576942738,
+      "pct": 13.870789576942741
+    },
+    "theta": {
+      "importance": 0.128573096715339,
+      "pct": 12.857309671533903
+    }
+  },
+  "top_features": [
+    {
+      "feature": "gamma_h0_mean_death_std",
+      "importance": 0.07147188844319083
+    },
+    {
+      "feature": "gamma_h0_total_persistence_std",
+      "importance": 0.06995992353647462
+    },
+    {
+      "feature": "gamma_h0_mean_persistence_std",
+      "importance": 0.06535439254353634
+    },
+    {
+      "feature": "gamma_h0_persistence_entropy_std",
+      "importance": 0.028931968875674684
+    },
+    {
+      "feature": "gamma_h1_mean_death_std",
+      "importance": 0.02513439052762872
+    },
+    {
+      "feature": "gamma_h1_mean_birth_std",
+      "importance": 0.022138998651944675
+    },
+    {
+      "feature": "alpha_h0_max_persistence_std",
+      "importance": 0.008133139601632158
+    },
+    {
+      "feature": "beta_h0_total_persistence_std",
+      "importance": 0.007693013051694322
+    },
+    {
+      "feature": "gamma_h0_std_persistence_std",
+      "importance": 0.007188505606739648
+    },
+    {
+      "feature": "gamma_h1_n_essential_mean",
+      "importance": 0.007037282911348498
+    },
+    {
+      "feature": "alpha_h1_mean_persistence_std",
+      "importance": 0.006982938979073594
+    },
+    {
+      "feature": "beta_h0_mean_persistence_std",
+      "importance": 0.0069063872026609175
+    },
+    {
+      "feature": "alpha_h0_std_death_std",
+      "importance": 0.006677696700960083
+    },
+    {
+      "feature": "gamma_h0_mean_death_mean",
+      "importance": 0.006602346912270354
+    },
+    {
+      "feature": "delta_h1_std_persistence_std",
+      "importance": 0.00644038938835651
+    },
+    {
+      "feature": "gamma_h1_std_death_std",
+      "importance": 0.006217844856888961
+    },
+    {
+      "feature": "gamma_h0_std_death_std",
+      "importance": 0.006200476217037212
+    },
+    {
+      "feature": "theta_h0_std_persistence_std",
+      "importance": 0.006185205620769123
+    },
+    {
+      "feature": "gamma_h0_persistence_entropy_mean",
+      "importance": 0.006154197968619022
+    },
+    {
+      "feature": "gamma_h1_n_essential_std",
+      "importance": 0.0061230786155123
+    }
+  ],
+  "conclusion": "SIGNIFICANT"
 }

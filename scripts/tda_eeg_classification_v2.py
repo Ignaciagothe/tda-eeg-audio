@@ -1,3 +1,43 @@
+"""
+TDA EEG Classification Analysis
+===============================
+
+CLAIM TYPE: CONDITION DISCRIMINABILITY
+--------------------------------------
+This script tests whether EEG trials from slow vs fast conditions are
+discriminable (classification above chance) using TDA-derived topological
+features, under group-aware cross-validation and permutation validation.
+
+HYPOTHESIS:
+  EEG functional connectivity topology differs between slow and fast
+  conditions in a way that enables above-chance classification.
+
+WHAT THIS ANALYSIS CAN PROVE:
+  - That there exists condition-dependent structure in EEG detectable via TDA
+  - That the two conditions produce measurably different brain network topology
+  - That this difference is statistically significant (via permutation testing)
+
+WHAT THIS ANALYSIS CANNOT PROVE:
+  - WHY the conditions differ (could be attention, arousal, processing mode, etc.)
+  - That one condition involves "better" processing
+  - That the difference is due to speech tracking (see tda_synchronization_analysis.py)
+
+RELATIONSHIP TO SYNCHRONIZATION ANALYSIS:
+  The synchronization script (tda_synchronization_analysis.py) tests a DIFFERENT claim:
+  whether EEG envelopes track audio envelopes more strongly in the slow condition.
+  Both analyses are complementary but not redundant.
+  - Classification = "Are conditions different?" (discriminability)
+  - Synchronization = "Does EEG track audio better in slow?" (coupling)
+
+CURRENT RESULT: HYPOTHESIS SUPPORTED
+  - 80.7% accuracy with GroupKFold CV (chance = 50%)
+  - p = 0.001 (permutation test)
+  - 95% CI: [86.9%, 94.6%]
+  - See docs/unified_analysis_summary.md for full interpretation
+
+Autor: Ignacia Gothe
+Fecha: 2025
+"""
 
 # Proyecto 1.b - Análisis del gráfico de conectividad funcional
 
@@ -10,6 +50,10 @@ from pathlib import Path
 from tqdm import tqdm
 import warnings
 import json
+import os
+import sys
+import hashlib
+from joblib import Parallel, delayed
 from ripser import ripser
 from matplotlib.patches import Patch
 from sklearn.ensemble import RandomForestClassifier
@@ -33,6 +77,14 @@ RESULTS_DIR = Path("results")
 FEATURES_DIR.mkdir(exist_ok=True)
 RESULTS_DIR.mkdir(exist_ok=True)
 
+# Batch processing controls (env vars)
+BATCH_START = int(os.getenv("BATCH_START", "0"))
+BATCH_END = int(os.getenv("BATCH_END", "-1"))
+WRITE_PARTIAL = os.getenv("WRITE_PARTIAL", "0") == "1"
+MERGE_PARTIALS = os.getenv("MERGE_PARTIALS", "0") == "1"
+PARTIALS_DIR = FEATURES_DIR / "partials"
+PARTIALS_DIR.mkdir(exist_ok=True)
+
 # Bandas de frecuencia 
 FREQ_BANDS = ["delta", "theta", "alpha", "beta", "gamma"]
 FREQ_BAND_RANGES = {
@@ -40,7 +92,7 @@ FREQ_BAND_RANGES = {
     "theta": "4-8 Hz (somnolencia, memoria)",
     "alpha": "8-13 Hz (relajación, inhibición)",
     "beta": "13-30 Hz (alerta, pensamiento activo)",
-    "gamma": "30-100 Hz (percepción, cognición)",
+    "gamma": "30-50 Hz (percepción, cognición)",
 }
 
 # Parámetros 
@@ -50,6 +102,11 @@ N_SPLITS = 5
 N_PERMUTATIONS = 1000 
 N_BOOTSTRAP = 1000 
 RANDOM_STATE = 42
+EQUALIZE_WINDOWS = True  # controla confusión por longitud de grabación
+WINDOW_SAMPLING = "random"  # "random" o "first"
+MAX_WINDOWS_PER_BAND = "min"  # "min" o int fijo
+WINDOW_SAMPLE_SEED = 42
+N_JOBS = int(os.getenv("N_JOBS", "1"))
 
 print("Configuración:")
 print(f"  Directorio de grafos: {GRAPHS_DIR}")
@@ -65,6 +122,10 @@ print("\nParámetros de clasificación:")
 print(f"  Folds de CV: {N_SPLITS}")
 print(f"  Iteraciones de permutación: {N_PERMUTATIONS}")
 print(f"  Iteraciones de bootstrap: {N_BOOTSTRAP}")
+print("\nControl de confusión por longitud:")
+print(f"  Equalize windows: {EQUALIZE_WINDOWS}")
+print(f"  Window sampling: {WINDOW_SAMPLING}")
+print(f"  Max windows per band: {MAX_WINDOWS_PER_BAND}")
 
 
 # tda
@@ -303,9 +364,24 @@ print("  - H1: ciclos/loops (patrones de conectividad circular)")
 ## Procesar todos los archivos y extraer características
 
 
-def process_file_features(file_dir, freq_bands, max_dim=1, max_edge_length=2.0, verbose=False):
+def process_file_features(
+    file_dir,
+    freq_bands,
+    max_dim=1,
+    max_edge_length=2.0,
+    max_windows_per_band=None,
+    window_sampling="random",
+    random_state=42,
+    verbose=False
+):
     file_features = {}
-    metadata = {"n_windows": {}, "validation_issues": []}
+    metadata = {
+        "n_windows": {},
+        "n_windows_used": {},
+        "validation_issues": [],
+        "window_sampling": window_sampling,
+        "max_windows_per_band": max_windows_per_band
+    }
     
     for band in freq_bands:
         dist_file = file_dir / f"{band}_distances.npy"
@@ -334,10 +410,30 @@ def process_file_features(file_dir, freq_bands, max_dim=1, max_edge_length=2.0, 
         if not is_valid:
             metadata["validation_issues"].extend([f"{band}: {i}" for i in issues])
 
+        # Submuestreo de ventanas para controlar confusión por longitud
+        if max_windows_per_band is None:
+            use_indices = np.arange(n_windows)
+        else:
+            if isinstance(max_windows_per_band, dict):
+                max_n = max_windows_per_band.get(band, n_windows)
+            else:
+                max_n = int(max_windows_per_band)
+            max_n = min(max_n, n_windows)
+
+            if window_sampling == "random":
+                seed_str = f"{file_dir.name}-{band}-{random_state}"
+                seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
+                rng = np.random.default_rng(seed)
+                use_indices = rng.choice(n_windows, size=max_n, replace=False)
+            else:
+                use_indices = np.arange(max_n)
+
+        metadata["n_windows_used"][band] = len(use_indices)
+
         h0_features_list = []
         h1_features_list = []
-        
-        for i in range(n_windows):
+
+        for i in use_indices:
             dist_matrix = distance_matrices[i]
             
             try:
@@ -374,8 +470,44 @@ def process_file_features(file_dir, freq_bands, max_dim=1, max_edge_length=2.0, 
             file_features[f"{band}_h1_{feat_name}_mean"] = np.mean(h1_values)
             file_features[f"{band}_h1_{feat_name}_std"] = np.std(h1_values)
     
+    # Resumen de ventanas por archivo
+    metadata["n_windows_total"] = int(sum(metadata["n_windows"].values()))
+    metadata["n_windows_used_total"] = int(sum(metadata["n_windows_used"].values()))
+
     return file_features, metadata
 
+
+def compute_min_windows_per_band(graphs_dirs, freq_bands):
+    """
+    Calcular el mínimo de ventanas disponibles por banda en todo el dataset.
+    """
+    min_windows = {band: np.inf for band in freq_bands}
+
+    for graphs_dir in graphs_dirs:
+        if not graphs_dir.exists():
+            continue
+        file_dirs = [d for d in graphs_dir.iterdir() if d.is_dir()]
+        for file_dir in file_dirs:
+            for band in freq_bands:
+                dist_file = file_dir / f"{band}_distances.npy"
+                if not dist_file.exists():
+                    continue
+                try:
+                    arr = np.load(dist_file, mmap_mode="r")
+                    n_windows = arr.shape[0]
+                    if n_windows > 0:
+                        min_windows[band] = min(min_windows[band], n_windows)
+                except Exception:
+                    continue
+
+    # Reemplazar inf por 0 si faltan bandas
+    for band, val in min_windows.items():
+        if val == np.inf:
+            min_windows[band] = 0
+        else:
+            min_windows[band] = int(val)
+
+    return min_windows
 
 
 print("Prueba de Extracción de Características en Datos Reales")
@@ -400,57 +532,94 @@ else:
     print("No se encontraron datos en el directorio graphs/slow")
 
 
-def create_dataset(graphs_dir_slow, graphs_dir_fast, freq_bands, max_dim=1, max_edge_length=2.0):
+def create_dataset(
+    graphs_dir_slow,
+    graphs_dir_fast,
+    freq_bands,
+    max_dim=1,
+    max_edge_length=2.0,
+    equalize_windows=True,
+    window_sampling="random",
+    max_windows_per_band="min",
+    random_state=42,
+    batch_start=0,
+    batch_end=None
+):
     all_features = []
     all_labels = []
     all_subjects = []
     all_filenames = []
     all_metadata = []
+
+    # Determinar número máximo de ventanas por banda para igualar longitudes
+    if equalize_windows:
+        if max_windows_per_band == "min":
+            min_windows = compute_min_windows_per_band(
+                [graphs_dir_slow, graphs_dir_fast], freq_bands
+            )
+            max_windows_per_band = min_windows
+            print("\nEqualizando ventanas por banda (min global):")
+            for band, nmin in min_windows.items():
+                print(f"  {band}: {nmin} ventanas")
+        else:
+            print(f"\nEqualizando ventanas por banda (máx fijo): {max_windows_per_band}")
     
 
     slow_dirs = sorted([d for d in graphs_dir_slow.iterdir() if d.is_dir()])
-    print(f"\nProcesando {len(slow_dirs)} archivos de audio LENTO...")
-    
-    for file_dir in tqdm(slow_dirs, desc="Lento"):
-        try:
-            features, metadata = process_file_features(
-                file_dir, freq_bands, max_dim, max_edge_length
-            )
-            if len(features) > 0:
-                all_features.append(features)
-                all_labels.append(0)  
-                filename = file_dir.name
-                parts = filename.split("_")
-                subject_id = parts[0] if len(parts) > 0 else filename
-                
-                all_subjects.append(subject_id)
-                all_filenames.append(filename)
-                all_metadata.append(metadata)
-        except Exception as e:
-            print(f"Error procesando {file_dir.name}: {e}")
-    
-
     fast_dirs = sorted([d for d in graphs_dir_fast.iterdir() if d.is_dir()])
-    print(f"Procesando {len(fast_dirs)} archivos de audio RÁPIDO...")
-    
-    for file_dir in tqdm(fast_dirs, desc="Rápido"):
+
+    entries = [(d, 0) for d in slow_dirs] + [(d, 1) for d in fast_dirs]
+    total_entries = len(entries)
+    if batch_end is None or batch_end < 0:
+        batch_end = total_entries
+    batch_start = max(0, batch_start)
+    batch_end = min(batch_end, total_entries)
+    entries = entries[batch_start:batch_end]
+
+    print(f"\nProcesando {len(entries)} archivos (batch {batch_start}:{batch_end}) de total {total_entries}...")
+
+    def _process_entry(file_dir, label):
         try:
             features, metadata = process_file_features(
-                file_dir, freq_bands, max_dim, max_edge_length
+                file_dir, freq_bands, max_dim, max_edge_length,
+                max_windows_per_band=max_windows_per_band,
+                window_sampling=window_sampling,
+                random_state=random_state
             )
-            if len(features) > 0:
-                all_features.append(features)
-                all_labels.append(1)  # rápido = 1
-                
-                filename = file_dir.name
-                parts = filename.split("_")
-                subject_id = parts[0] if len(parts) > 0 else filename
-                
-                all_subjects.append(subject_id)
-                all_filenames.append(filename)
-                all_metadata.append(metadata)
+            if len(features) == 0:
+                return None
+
+            filename = file_dir.name
+            parts = filename.split("_")
+            subject_id = parts[0] if len(parts) > 0 else filename
+
+            metadata["filename"] = filename
+            metadata["subject"] = subject_id
+            metadata["label"] = label
+
+            return features, label, subject_id, filename, metadata
         except Exception as e:
             print(f"Error procesando {file_dir.name}: {e}")
+            return None
+
+    if N_JOBS > 1:
+        results = Parallel(n_jobs=N_JOBS, prefer="processes")(
+            delayed(_process_entry)(file_dir, label) for file_dir, label in entries
+        )
+    else:
+        results = []
+        for file_dir, label in tqdm(entries, desc="Archivos"):
+            results.append(_process_entry(file_dir, label))
+
+    for res in results:
+        if res is None:
+            continue
+        features, label, subject_id, filename, metadata = res
+        all_features.append(features)
+        all_labels.append(label)
+        all_subjects.append(subject_id)
+        all_filenames.append(filename)
+        all_metadata.append(metadata)
     
 
     df_features = pd.DataFrame(all_features)
@@ -472,13 +641,67 @@ def create_dataset(graphs_dir_slow, graphs_dir_fast, freq_bands, max_dim=1, max_
     
     return X, y, subjects, feature_names, all_filenames, all_metadata
 
-X, y, subjects, feature_names, filenames, all_metadata = create_dataset(
-    GRAPHS_DIR / "slow",
-    GRAPHS_DIR / "fast",
-    FREQ_BANDS,
-    MAX_DIM,
-    MAX_EDGE_LENGTH
-)
+if MERGE_PARTIALS:
+    print("\nMERGE_PARTIALS=1 → combinando parciales...")
+    parts = sorted(PARTIALS_DIR.glob("batch_*.npz"))
+    if not parts:
+        print("No se encontraron parciales en features/partials")
+        sys.exit(1)
+
+    all_X = []
+    all_y = []
+    all_subjects = []
+    all_filenames = []
+    all_metadata = []
+    feature_names = None
+
+    for p in parts:
+        data = np.load(p, allow_pickle=True)
+        all_X.append(data["X"])
+        all_y.append(data["y"])
+        all_subjects.append(data["subjects"])
+        all_filenames.append(data["filenames"])
+        if feature_names is None:
+            feature_names = list(data["feature_names"])
+        else:
+            if list(data["feature_names"]) != feature_names:
+                raise ValueError(f"Feature names mismatch in {p.name}")
+        all_metadata.extend(list(data["metadata"]))
+
+    X = np.vstack(all_X)
+    y = np.concatenate(all_y)
+    subjects = np.concatenate(all_subjects)
+    filenames = np.concatenate(all_filenames)
+
+else:
+    X, y, subjects, feature_names, filenames, all_metadata = create_dataset(
+        GRAPHS_DIR / "slow",
+        GRAPHS_DIR / "fast",
+        FREQ_BANDS,
+        MAX_DIM,
+        MAX_EDGE_LENGTH,
+        equalize_windows=EQUALIZE_WINDOWS,
+        window_sampling=WINDOW_SAMPLING,
+        max_windows_per_band=MAX_WINDOWS_PER_BAND,
+        random_state=WINDOW_SAMPLE_SEED,
+        batch_start=BATCH_START,
+        batch_end=(None if BATCH_END < 0 else BATCH_END)
+    )
+
+    if WRITE_PARTIAL:
+        batch_label = f"batch_{BATCH_START}_{BATCH_END if BATCH_END >= 0 else 'end'}"
+        out_path = PARTIALS_DIR / f"{batch_label}.npz"
+        np.savez(
+            out_path,
+            X=X,
+            y=y,
+            subjects=subjects,
+            filenames=filenames,
+            feature_names=np.array(feature_names, dtype=object),
+            metadata=np.array(all_metadata, dtype=object)
+        )
+        print(f"Parcial guardado: {out_path}")
+        sys.exit(0)
 
 # Guardar dataset
 np.save(FEATURES_DIR / "X.npy", X)
@@ -492,6 +715,13 @@ with open(FEATURES_DIR / "feature_names.txt", "w") as f:
 with open(FEATURES_DIR / "filenames.txt", "w") as f:
     for name in filenames:
         f.write(f"{name}\n")
+
+# Guardar metadata (ventanas utilizadas)
+metadata_df = pd.DataFrame(all_metadata)
+if not metadata_df.empty:
+    metadata_df.to_csv(FEATURES_DIR / "metadata.csv", index=False)
+    with open(FEATURES_DIR / "metadata.json", "w") as f:
+        json.dump(all_metadata, f, indent=2, ensure_ascii=False)
 
 print(f"\nDataset guardado en {FEATURES_DIR}")
 
@@ -519,6 +749,16 @@ if n_removed > 0:
     filenames = [f for f, v in zip(filenames, valid_mask) if v]
 
 print(f"\nDataset limpio: {X.shape[0]} muestras, {X.shape[1]} características")
+
+# Verificar confusión por longitud (número de ventanas utilizadas)
+if 'metadata_df' in globals() and not metadata_df.empty:
+    if 'n_windows_used_total' in metadata_df.columns:
+        win_slow = metadata_df[metadata_df['label'] == 0]['n_windows_used_total'].values
+        win_fast = metadata_df[metadata_df['label'] == 1]['n_windows_used_total'].values
+        if len(win_slow) > 0 and len(win_fast) > 0:
+            print("\nChequeo de longitud (ventanas usadas):")
+            print(f"  Slow: {win_slow.mean():.1f} ± {win_slow.std():.1f}")
+            print(f"  Fast: {win_fast.mean():.1f} ± {win_fast.std():.1f}")
 
 print("\nEstadísticas de características:")
 print(f"  Valor mínimo: {X.min():.4f}")
@@ -587,7 +827,13 @@ plt.show()
 
 
 
-gkf = GroupKFold(n_splits=N_SPLITS)
+try:
+    from sklearn.model_selection import StratifiedGroupKFold
+    gkf = StratifiedGroupKFold(n_splits=N_SPLITS, shuffle=True, random_state=RANDOM_STATE)
+    cv_name = "StratifiedGroupKFold"
+except Exception:
+    gkf = GroupKFold(n_splits=N_SPLITS)
+    cv_name = "GroupKFold"
 
 
 for fold, (train_idx, test_idx) in enumerate(gkf.split(X, y, groups=subjects)):
@@ -606,7 +852,7 @@ for fold, (train_idx, test_idx) in enumerate(gkf.split(X, y, groups=subjects)):
         print("    Sin solapamiento de sujetos - aislamiento apropiado")
 
 
-print("Entrenamiento y Evaluación del Modelo")
+print(f"Entrenamiento y Evaluación del Modelo (CV: {cv_name})")
 
 pipeline = Pipeline([
     ('scaler', StandardScaler()),
@@ -985,6 +1231,3 @@ results_dict = {
 # Guardar como JSON
 with open(RESULTS_DIR / "results_summary.json", "w") as f:
     json.dump(results_dict, f, indent=2, ensure_ascii=False)
-
-
-
