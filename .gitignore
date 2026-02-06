@@ -16,3 +16,5 @@ archive/
 *.aux
 *.log
 *.out
+paper/paper.pdf
+paper/paper.tex

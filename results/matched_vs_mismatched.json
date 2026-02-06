@@ -1,0 +1,66 @@
+{
+  "analysis": "Matched vs Mismatched Wasserstein Control",
+  "description": "Tests whether W(EEG, Audio_same_condition) < W(EEG, Audio_opposite_condition)",
+  "results_by_band": {
+    "delta": {
+      "n": 45,
+      "w_matched": 0.8722069471043488,
+      "w_mismatched": 0.8429588471908507,
+      "direction": "matched > mismatched",
+      "p": 8.952497410064097e-09,
+      "cohens_d": 1.0898441428016827,
+      "n_matched_lower": 5,
+      "pct_matched_lower": 11.11111111111111,
+      "p_fdr": 1.4920829016773496e-08,
+      "sig_fdr": true
+    },
+    "theta": {
+      "n": 45,
+      "w_matched": 1.5345423870689336,
+      "w_mismatched": 1.5576417509633314,
+      "direction": "matched < mismatched",
+      "p": 7.385665412584785e-10,
+      "cohens_d": -0.8783652203733764,
+      "n_matched_lower": 42,
+      "pct_matched_lower": 93.33333333333333,
+      "p_fdr": 1.8464163531461963e-09,
+      "sig_fdr": true
+    },
+    "alpha": {
+      "n": 45,
+      "w_matched": 1.355547721795709,
+      "w_mismatched": 1.3777156090874894,
+      "direction": "matched < mismatched",
+      "p": 3.258535343775293e-07,
+      "cohens_d": -0.8811397384124253,
+      "n_matched_lower": 36,
+      "pct_matched_lower": 80.0,
+      "p_fdr": 4.073169179719116e-07,
+      "sig_fdr": true
+    },
+    "beta": {
+      "n": 45,
+      "w_matched": 1.1097187609829844,
+      "w_mismatched": 1.154300449649271,
+      "direction": "matched < mismatched",
+      "p": 5.002220859751105e-12,
+      "cohens_d": -2.067539600697294,
+      "n_matched_lower": 42,
+      "pct_matched_lower": 93.33333333333333,
+      "p_fdr": 2.5011104298755527e-11,
+      "sig_fdr": true
+    },
+    "gamma": {
+      "n": 45,
+      "w_matched": 1.1567006976060885,
+      "w_mismatched": 1.158282311621838,
+      "direction": "matched < mismatched",
+      "p": 0.5382812738724851,
+      "cohens_d": -0.07184337539586158,
+      "n_matched_lower": 15,
+      "pct_matched_lower": 33.33333333333333,
+      "p_fdr": 0.5382812738724851,
+      "sig_fdr": false
+    }
+  }
+}
