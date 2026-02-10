@@ -1,49 +1,26 @@
 """
-TDA EEG Classification Analysis
-===============================
+verision anterior
+TDA EEG Clasification
 
-CLAIM TYPE: CONDITION DISCRIMINABILITY
---------------------------------------
-This script tests whether EEG trials from slow vs fast conditions are
-discriminable (classification above chance) using TDA-derived topological
-features, under group-aware cross-validation and permutation validation.
-
-HYPOTHESIS:
+hipotesis 1:
   EEG functional connectivity topology differs between slow and fast
   conditions in a way that enables above-chance classification.
 
-WHAT THIS ANALYSIS CAN PROVE:
-  - That there exists condition-dependent structure in EEG detectable via TDA
-  - That the two conditions produce measurably different brain network topology
-  - That this difference is statistically significant (via permutation testing)
+este scripte prueba si eeg lento vs eeg rapido son discriminables por un random forest (por sobre el azar) 
+entrenado usando features tda. 
+utiliza cross validation con awareness de grupo y validacion por permutacion.
 
-WHAT THIS ANALYSIS CANNOT PROVE:
-  - WHY the conditions differ (could be attention, arousal, processing mode, etc.)
-  - That one condition involves "better" processing
-  - That the difference is due to speech tracking (see tda_synchronization_analysis.py)
+objetivo: demostrar que la topologia cerebral difiere entre condiciones y que esta diferencia es significativa (permutacion).
 
-RELATIONSHIP TO SYNCHRONIZATION ANALYSIS:
-  The synchronization script (tda_synchronization_analysis.py) tests a DIFFERENT claim:
-  whether EEG envelopes track audio envelopes more strongly in the slow condition.
-  Both analyses are complementary but not redundant.
-  - Classification = "Are conditions different?" (discriminability)
-  - Synchronization = "Does EEG track audio better in slow?" (coupling)
 
-CURRENT RESULT: HYPOTHESIS SUPPORTED
-  - 80.7% accuracy with GroupKFold CV (chance = 50%)
-  - p = 0.001 (permutation test)
-  - 95% CI: [86.9%, 94.6%]
-  - See docs/unified_analysis_summary.md for full interpretation
-
-Autor: Ignacia Gothe
-Fecha: 2025
 """
 
-# Proyecto 1.b - Análisis del gráfico de conectividad funcional
-
+# Proyecto 1.b - Análisis grafo de conectividad funcional
 
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
@@ -57,19 +34,16 @@ from joblib import Parallel, delayed
 from ripser import ripser
 from matplotlib.patches import Patch
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score,cross_val_predict,GroupKFold
-from sklearn.metrics import classification_report,confusion_matrix,roc_auc_score,f1_score
+from sklearn.model_selection import cross_val_score, cross_val_predict, GroupKFold
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, f1_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
-warnings.filterwarnings("ignore")
+from utils import permute_labels_by_subject
+
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 plt.style.use("seaborn-v0_8-darkgrid")
 sns.set_palette("husl")
-np.random.seed(42)
-
-
-
-
-### Configuración y rutas de datos
 
 GRAPHS_DIR = Path("graphs")
 FEATURES_DIR = Path("features")
@@ -85,7 +59,7 @@ MERGE_PARTIALS = os.getenv("MERGE_PARTIALS", "0") == "1"
 PARTIALS_DIR = FEATURES_DIR / "partials"
 PARTIALS_DIR.mkdir(exist_ok=True)
 
-# Bandas de frecuencia 
+
 FREQ_BANDS = ["delta", "theta", "alpha", "beta", "gamma"]
 FREQ_BAND_RANGES = {
     "delta": "0.5-4 Hz (sueño profundo, atención)",
@@ -95,7 +69,7 @@ FREQ_BAND_RANGES = {
     "gamma": "30-50 Hz (percepción, cognición)",
 }
 
-# Parámetros 
+
 MAX_DIM = 1  
 MAX_EDGE_LENGTH = 2
 N_SPLITS = 5 
@@ -188,11 +162,9 @@ def compute_persistence_diagram(distance_matrix, max_dim=1, max_edge_length=2.0)
         Diagramas de persistencia para cada dimensión [H0, H1, ...]
         Cada diagrama tiene forma (n_features, 2) con pares (nacimiento, muerte)
     """
-    # Asegurar que la matriz es simétrica (promediar si existen pequeñas diferencias)
+    # Asegurar que la matriz es simétrica 
     distance_matrix = (distance_matrix + distance_matrix.T) / 2
-    np.fill_diagonal(distance_matrix, 0)
-    
-    # Recortar cualquier valor negativo pequeño por errores numéricos
+    np.fill_diagonal(distance_matrix, 0)    
     distance_matrix = np.maximum(distance_matrix, 0)
     
     result = ripser(
@@ -279,32 +251,32 @@ def extract_persistence_features(diagram, dim_name=""):
 
 
 # Probar con datos de muestra
-print("Prueba del Pipeline ")
-np.random.seed(42)
-test_dist = np.random.rand(47, 47)
-test_dist = (test_dist + test_dist.T) / 2  
-np.fill_diagonal(test_dist, 0)
+# print("Prueba del Pipeline ")
+# _test_rng = np.random.default_rng(42)
+# test_dist = _test_rng.random((47, 47))
+# test_dist = (test_dist + test_dist.T) / 2  
+# np.fill_diagonal(test_dist, 0)
 
 
-is_valid, issues = validate_distance_matrix(test_dist, "test")
-print(f"Validación de matriz de distancia: {'APROBADA' if is_valid else 'FALLIDA'}")
-if issues:
-    for issue in issues:
-        print(f"  - {issue}")
+# is_valid, issues = validate_distance_matrix(test_dist, "test")
+# print(f"Validación de matriz de distancia: {'APROBADA' if is_valid else 'FALLIDA'}")
+# if issues:
+#     for issue in issues:
+#         print(f"  - {issue}")
 
-# Calcular persistencia
-diagrams_test = compute_persistence_diagram(test_dist, MAX_DIM, MAX_EDGE_LENGTH)
-print("Diagramas de persistencia calculados:")
-print(f"  H0 (componentes conectadas): {len(diagrams_test[0])} características")
-print(f"  H1 (ciclos/loops): {len(diagrams_test[1])} características")
+# # Calcular persistencia
+# diagrams_test = compute_persistence_diagram(test_dist, MAX_DIM, MAX_EDGE_LENGTH)
+# print("Diagramas de persistencia calculados:")
+# print(f"  H0 (componentes conectadas): {len(diagrams_test[0])} características")
+# print(f"  H1 (ciclos/loops): {len(diagrams_test[1])} características")
 
-# Extraer características
-features_h0 = extract_persistence_features(diagrams_test[0], "H0")
-features_h1 = extract_persistence_features(diagrams_test[1], "H1")
-print("Características extraídas:")
-print(f"  H0: {len(features_h0)} características escalares")
-print(f"  H1: {len(features_h1)} características escalares")
-print(f"  Total por banda: {len(features_h0) + len(features_h1)} características")
+# # Extraer características
+# features_h0 = extract_persistence_features(diagrams_test[0], "H0")
+# features_h1 = extract_persistence_features(diagrams_test[1], "H1")
+# print("Características extraídas:")
+# print(f"  H0: {len(features_h0)} características escalares")
+# print(f"  H1: {len(features_h1)} características escalares")
+# print(f"  Total por banda: {len(features_h0) + len(features_h1)} características")
 
 
 
@@ -347,23 +319,22 @@ def plot_persistence_diagram(diagrams, title="Diagrama de Persistencia", ax=None
     return ax
 
 
-fig, ax = plt.subplots(figsize=(8, 8))
-plot_persistence_diagram(diagrams_test, "Diagrama de Persistencia de Muestra (Datos Aleatorios)", ax)
-plt.tight_layout()
-plt.savefig(RESULTS_DIR / "sample_persistence_diagram.png", dpi=150)
-plt.show()
+# fig, ax = plt.subplots(figsize=(8, 8))
+# plot_persistence_diagram(diagrams_test, "Diagrama de Persistencia de Muestra (Datos Aleatorios)", ax)
+# plt.tight_layout()
+# plt.savefig(RESULTS_DIR / "sample_persistence_diagram.png", dpi=150)
+# plt.close()
 
-print("Explicación del diagrama de persistencia:")
-print("  - Cada punto representa una característica topológica")
-print("  - Eje X (nacimiento): umbral de distancia donde aparece la característica")
-print("  - Eje Y (muerte): umbral de distancia donde desaparece la característica")
-print("  - Distancia desde diagonal = persistencia = importancia")
-print("  - H0: componentes conectadas (cómo se fragmenta el grafo)")
-print("  - H1: ciclos/loops (patrones de conectividad circular)")
+# print("Explicación del diagrama de persistencia:")
+# print("  - Cada punto representa una característica topológica")
+# print("  - Eje X (nacimiento): umbral de distancia donde aparece la característica")
+# print("  - Eje Y (muerte): umbral de distancia donde desaparece la característica")
+# print("  - Distancia desde diagonal = persistencia = importancia")
+# print("  - H0: componentes conectadas (cómo se fragmenta el grafo)")
+# print("  - H1: ciclos/loops (patrones de conectividad circular)")
+
 
 ## Procesar todos los archivos y extraer características
-
-
 def process_file_features(
     file_dir,
     freq_bands,
@@ -435,24 +406,18 @@ def process_file_features(
 
         for i in use_indices:
             dist_matrix = distance_matrices[i]
+    
+            diagrams = compute_persistence_diagram(
+                dist_matrix, max_dim, max_edge_length
+            )
             
-            try:
-                # Calcular diagramas de persistencia
-                diagrams = compute_persistence_diagram(
-                    dist_matrix, max_dim, max_edge_length
-                )
-                
-                # Extraer características
-                h0_feats = extract_persistence_features(diagrams[0], "H0")
-                h1_feats = extract_persistence_features(diagrams[1], "H1")
-                
-                h0_features_list.append(h0_feats)
-                h1_features_list.append(h1_feats)
-                
-            except Exception as e:
-                if verbose:
-                    print(f"  Error in {band} window {i}: {e}")
-                continue
+            # Extraer características
+            h0_feats = extract_persistence_features(diagrams[0], "H0")
+            h1_feats = extract_persistence_features(diagrams[1], "H1")
+            
+            h0_features_list.append(h0_feats)
+            h1_features_list.append(h1_feats)
+       
         
         # Verificar si obtuvimos características válidas
         if len(h0_features_list) == 0:
@@ -500,7 +465,6 @@ def compute_min_windows_per_band(graphs_dirs, freq_bands):
                 except Exception:
                     continue
 
-    # Reemplazar inf por 0 si faltan bandas
     for band, val in min_windows.items():
         if val == np.inf:
             min_windows[band] = 0
@@ -822,7 +786,7 @@ ax2.tick_params(axis='x', rotation=45)
 
 plt.tight_layout()
 plt.savefig(RESULTS_DIR / "subject_distribution.png", dpi=150)
-plt.show()
+plt.close()
 
 
 
@@ -884,10 +848,11 @@ y_proba_cv = cross_val_predict(pipeline, X, y, groups=subjects, cv=gkf, method="
 cv_auc = roc_auc_score(y, y_proba_cv[:, 1])
 print(f"ROC AUC: {cv_auc:.3f}")
 
-report=classification_report(y, y_pred_cv, target_names=["Lento", "Rápido"])
+report = classification_report(y, y_pred_cv, target_names=["Lento", "Rápido"])
 print(report)
-report_df = pd.DataFrame(report.split('\n'))
-report_df.to_csv( "Reporte_resultados.csv", index=False)
+report_dict = classification_report(y, y_pred_cv, target_names=["Lento", "Rápido"], output_dict=True)
+report_df = pd.DataFrame(report_dict).transpose()
+report_df.to_csv(RESULTS_DIR / "classification_report.csv")
 
 cm = confusion_matrix(y, y_pred_cv)
 
@@ -913,8 +878,8 @@ ax.text(1.35, 0.5, textstr, transform=ax.transAxes, fontsize=12,
         verticalalignment="center", bbox=props)
 
 plt.tight_layout()
-plt.savefig("Matriz_confusion_prueba.png", dpi=150)
-plt.show()
+plt.savefig(RESULTS_DIR / "confusion_matrix.png", dpi=150)
+plt.close()
 
 
 
@@ -969,7 +934,7 @@ for i, (band, imp) in enumerate(band_importance.items()):
 
 plt.tight_layout()
 plt.savefig(RESULTS_DIR / "feature_importance.png", dpi=150)
-plt.show()
+plt.close()
 
 
 print("\nResumen por Banda:")
@@ -987,12 +952,12 @@ print(dim_summary.round(4))
 
 def permutation_test_cv(X, y, subjects, model, cv, n_permutations=1000, random_state=42):
     observed_acc = cross_val_score(model, X, y, groups=subjects, cv=cv, scoring="accuracy").mean()
-    
+
     rng = np.random.RandomState(random_state)
     null_dist = []
-    
+
     for i in tqdm(range(n_permutations), desc="Test de permutación"):
-        y_perm = rng.permutation(y)
+        y_perm = permute_labels_by_subject(y, subjects, rng)
         perm_acc = cross_val_score(model, X, y_perm, groups=subjects, cv=cv, scoring="accuracy").mean()
         null_dist.append(perm_acc)
     
@@ -1042,46 +1007,33 @@ print(f"  Significancia: {sig_level}")
 
 # Intervalo de confianza bootstrap
 
-def bootstrap_cv_score(X, y, groups, model, cv, n_bootstrap=1000, random_state=42):
-    np.random.seed(random_state)
+def bootstrap_subject_accuracy(y, y_pred, subjects, n_bootstrap=1000, random_state=42):
+    """
+    Bootstrap CI using subject-level out-of-fold predictions (no data leakage).
+
+    Instead of re-running CV inside each bootstrap (which leaks data when the same
+    subject appears multiple times), we bootstrap over per-subject accuracies
+    computed from the original out-of-fold predictions.
+    """
+    boot_rng = np.random.default_rng(random_state)
+    unique_subjects = np.unique(subjects)
+    n_subj = len(unique_subjects)
+
+    # Compute per-subject accuracy from out-of-fold predictions
+    subject_acc = np.array([
+        (y_pred[subjects == s] == y[subjects == s]).mean()
+        for s in unique_subjects
+    ])
+
     bootstrap_scores = []
-    
-    unique_subjects = np.unique(groups)
-    n_subjects = len(unique_subjects)
-    
-    for i in tqdm(range(n_bootstrap), desc="Bootstrap"):
-        boot_subjects = np.random.choice(unique_subjects, size=n_subjects, replace=True)
-        
-        boot_indices = []
-        new_groups = []
-        for j, subj in enumerate(boot_subjects):
-            subj_indices = np.where(groups == subj)[0]
-            boot_indices.extend(subj_indices)
-            new_groups.extend([j] * len(subj_indices))
-        
-        boot_indices = np.array(boot_indices)
-        new_groups = np.array(new_groups)
-        
-        X_boot = X[boot_indices]
-        y_boot = y[boot_indices]
-        
-        if len(np.unique(y_boot)) < 2:
-            continue
-        if len(np.unique(new_groups)) < cv.n_splits:
-            continue
-        
-        try:
-            boot_scores = cross_val_score(
-                model, X_boot, y_boot, groups=new_groups, cv=cv, scoring="accuracy"
-            )
-            bootstrap_scores.append(boot_scores.mean())
-        except Exception:
-            continue
-    
+    for _ in tqdm(range(n_bootstrap), desc="Bootstrap"):
+        boot_idx = boot_rng.choice(n_subj, size=n_subj, replace=True)
+        bootstrap_scores.append(subject_acc[boot_idx].mean())
+
     return np.array(bootstrap_scores)
 
-bootstrap_accs = bootstrap_cv_score(
-    X, y, subjects, pipeline, gkf,
+bootstrap_accs = bootstrap_subject_accuracy(
+    y, y_pred_cv, subjects,
     n_bootstrap=N_BOOTSTRAP,
     random_state=RANDOM_STATE
 )
@@ -1158,7 +1110,7 @@ ax2.text(0.97, 0.97, textstr, transform=ax2.transAxes, fontsize=11,
 
 plt.tight_layout()
 plt.savefig(RESULTS_DIR / "statistical_tests.png", dpi=150)
-plt.show()
+plt.close()
 
 
 results_summary = {

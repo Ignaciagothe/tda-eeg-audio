@@ -1,35 +1,6 @@
-# Topological EEG--Audio Coupling in Infant Speech Processing
+# EEG–Audio Topology in Infant Speech Processing
 
-Topological Data Analysis (TDA) of infant EEG functional connectivity during speech processing. We test whether persistent homology captures condition-dependent topological signatures and whether brain connectivity topology is structurally coupled to auditory stimulus topology.
-
-## Results
-
-### Classification (Analysis 1)
-
-| Metric | Value |
-|--------|-------|
-| Accuracy | 73.1% +/- 2.1% |
-| F1 | 0.732 |
-| ROC-AUC | 0.804 |
-| p-value | < 0.001 (permutation test) |
-| 95% CI | [69.8%, 75.6%] |
-| Top band | Gamma (44.5%) |
-
-### EEG--Audio Topological Coupling (Analysis 2)
-
-Wasserstein distances between EEG and audio persistence diagrams (H1) are significantly smaller in the slow condition for delta and theta (p_FDR < 0.002).
-
-### Matched-vs-Mismatched Control (Analysis 3)
-
-| Band | Direction | p_FDR | Cohen's d | % matched < mismatch |
-|------|-----------|-------|-----------|---------------------|
-| Theta | matched < mismatch | 1.8e-9 | -0.88 | 93% |
-| Alpha | matched < mismatch | 4.1e-7 | -0.88 | 80% |
-| Beta | matched < mismatch | 2.5e-11 | -2.07 | 93% |
-| Delta | matched > mismatch | 1.5e-8 | +1.09 | 11% |
-| Gamma | n.s. | 0.54 | -0.07 | 33% |
-
-Theta, alpha, and beta show genuine condition-specific coupling. Delta is reversed (reflects intrinsic audio differences). Gamma is not significant.
+Topological Data Analysis of infant EEG during speech. We test whether persistent homology captures condition-dependent structure and whether EEG topology is coupled to audio topology.
 
 ## Data
 
@@ -47,28 +18,20 @@ tda-eeg-audio/
 ├── features/               # Cached TDA features (X.npy, y.npy, subjects.npy)
 ├── results/                # JSON results + figures
 ├── scripts/
+│   ├── utils.py                      
 │   ├── tda_eeg_audio_comparison.py   # Analysis 2: Wasserstein EEG-audio comparison
+│   ├── matched_vs_mismatched.py      # Analysis 3: Matched-vs-mismatched control
 │   ├── classification_rerun.py       # Analysis 1: RF classification
-│   └── tda_eeg_classification_v2.py  # Feature extraction (legacy)
+│   └── tda_eeg_classification_v2.py  
 ├── notebooks/              # Pipeline notebooks (EDA, preprocessing, graph construction)
 ├── paper/
-│   ├── paper_revised.tex   # Current manuscript
-│   ├── paper_revised.pdf   # Compiled PDF
-│   ├── respuesta_comentarios.md
-│   └── figures/            # Publication figures
+│   ├── paper.tex
+│   └── figures/           
 ├── requirements.txt
 └── README.md
 ```
 
 ## Pipeline
-
-### Prerequisites
-
-```bash
-pip install numpy pandas scipy scikit-learn ripser persim matplotlib seaborn statsmodels tqdm
-```
-
-### Full pipeline (from raw data)
 
 ```bash
 # 1. Preprocessing and graph construction (notebooks)
@@ -85,13 +48,7 @@ python scripts/tda_eeg_audio_comparison.py     # -> results/eeg_audio_tda_compar
 python scripts/classification_rerun.py         # -> results/results_summary.json
 
 # 5. Matched-vs-mismatched control (~10 min)
-python matched_vs_mismatched.py                # -> results/matched_vs_mismatched.json
-```
-
-### Compile paper
-
-```bash
-cd paper && pdflatex paper_revised.tex && pdflatex paper_revised.tex
+python scripts/matched_vs_mismatched.py        # -> results/matched_vs_mismatched.json
 ```
 
 ## Methods
@@ -103,13 +60,3 @@ cd paper && pdflatex paper_revised.tex && pdflatex paper_revised.tex
 5. **Classification**: Random Forest (100 trees, max_depth=10), StratifiedGroupKFold (k=5), permutation test (1000 iter).
 6. **EEG-audio coupling**: 1-Wasserstein distance between EEG and audio persistence diagrams. Wilcoxon signed-rank, FDR-corrected.
 7. **Matched-vs-mismatched control**: W(EEG, Audio_same) vs W(EEG, Audio_opposite) per subject per band.
-
-## Author
-
-Maria Ignacia Gothe -- Pontificia Universidad Catolica de Chile (mgothe@uc.cl)
-
-## References
-
-- Edelsbrunner, H. and Harer, J.L. (2010). *Computational Topology*. AMS.
-- Carlsson, G. (2009). Topology and data. *Bull. Amer. Math. Soc.*, 46(2):255-308.
-- Giraud, A.L. and Poeppel, D. (2012). *Nat. Neurosci.*, 15(4):511-517.

@@ -5,16 +5,17 @@ __pycache__/
 
 .venv/
 
-data/
-graphs/
-features/
-preprocessed/
-archive/
 
+graphs/
+preprocessed/
+paper/paper_revised.pdf
+paper/paper_revised.tex
+paper/paper.pdf
+paper/paper.tex
 *.mat
 *.npy
 *.aux
 *.log
 *.out
-paper/paper.pdf
-paper/paper.tex
+
+
