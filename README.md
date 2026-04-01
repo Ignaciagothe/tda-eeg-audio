@@ -7,6 +7,7 @@ Topological Data Analysis of infant EEG during speech. We test whether persisten
 - 45 infants (3-5 months), 1,416 recordings (710 slow audio + 706 fast audio)
 - for every audio the recording included 47-channel EEG at 250 Hz, audio at 44,100 Hz 
 - MATLAB files: `bbXX_utYY.mat` with `subeeg`, `y`, `Fs`
+**Nota:** No se incluyen datos utilizados. Cleared out todos los notebooks (outputs / ejecución) antes de subirlos por precaución con los datos. 
 
 
 ### Pipeline
@@ -23,6 +24,7 @@ Topological Data Analysis of infant EEG during speech. We test whether persisten
 
 5) Compare EEG–audio topology: Wasserstein distance between EEG and audio persistence diagrams per band; within-subject Wilcoxon signed-rank test (slow vs. fast), FDR-corrected.
 6) Validate coupling specificity: compare Wasserstein distances between matched pairs (EEG ↔ same-condition audio) against mismatched pairs (EEG ↔ opposite-condition audio) within each subject to confirm condition-specific coupling.
+
 
 
 ### Project Structure
@@ -43,3 +45,5 @@ tda-eeg-audio/
 ├── notebooks/              # Pipeline notebooks (EDA, preprocessing, graph construction)         
 ├── requirements.txt
 └── README.md
+```
+comentarios/consultas a mgothe@uc.cl
