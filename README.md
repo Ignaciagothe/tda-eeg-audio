@@ -25,7 +25,7 @@ Topological Data Analysis of infant EEG during speech. We test whether persisten
 6) Validate coupling specificity: compare Wasserstein distances between matched pairs (EEG ↔ same-condition audio) against mismatched pairs (EEG ↔ opposite-condition audio) within each subject to confirm condition-specific coupling.
 
 
-**Project Structure**
+### Project Structure
 
 ```
 tda-eeg-audio/
