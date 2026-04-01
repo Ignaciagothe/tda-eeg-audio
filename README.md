@@ -2,14 +2,14 @@
 
 Topological Data Analysis of infant EEG during speech. We test whether persistent homology captures condition dependent structure and whether EEG topology is coupled to audio topology.
 
-#### Data
+**Data**
 
 - 45 infants (3-5 months), 1,416 recordings (710 slow audio + 706 fast audio)
 - for every audio the recording included 47-channel EEG at 250 Hz, audio at 44,100 Hz 
 - MATLAB files: `bbXX_utYY.mat` with `subeeg`, `y`, `Fs`
 
 
-#### Pipeline
+### Pipeline
 
 1) Preprocess EEG and audio: band-pass filter EEG (47 channels) into 5 frequency bands, segment into 1 s windows; resample audio, extract amplitude envelope, filter into the same bands.
    
@@ -25,7 +25,7 @@ Topological Data Analysis of infant EEG during speech. We test whether persisten
 6) Validate coupling specificity: compare Wasserstein distances between matched pairs (EEG ↔ same-condition audio) against mismatched pairs (EEG ↔ opposite-condition audio) within each subject to confirm condition-specific coupling.
 
 
-### Project Structure
+**Project Structure**
 
 ```
 tda-eeg-audio/
