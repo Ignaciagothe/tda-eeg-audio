@@ -7,6 +7,7 @@ Topological Data Analysis of infant EEG during speech. We test whether persisten
 - 45 infants (3-5 months), 1,416 recordings (710 slow audio + 706 fast audio)
 - for every audio the recording included 47-channel EEG at 250 Hz, audio at 44,100 Hz 
 - MATLAB files: `bbXX_utYY.mat` with `subeeg`, `y`, `Fs`
+  
 **Nota:** No se incluyen datos utilizados. Cleared out todos los notebooks (outputs / ejecución) antes de subirlos por precaución con los datos. 
 Los graficos y varios analisis no se incluyen en el repositorio publico. contacto mgothe@uc.cl 
 
