@@ -1,4 +1,4 @@
-# EEG–Audio Topology in Infant Speech Processing
+## EEG–Audio Topology in Infant Speech Processing
 
 Topological Data Analysis of infant EEG during speech. We test whether persistent homology captures condition dependent structure and whether EEG topology is coupled to audio topology.
 
@@ -8,7 +8,7 @@ Topological Data Analysis of infant EEG during speech. We test whether persisten
 - for every audio the recording included 47-channel EEG at 250 Hz, audio at 44,100 Hz 
 - MATLAB files: `bbXX_utYY.mat` with `subeeg`, `y`, `Fs`
 **Nota:** No se incluyen datos utilizados. Cleared out todos los notebooks (outputs / ejecución) antes de subirlos por precaución con los datos. 
-
+Los graficos y varios analisis no se incluyen en el repositorio publico. contacto mgothe@uc.cl 
 
 ### Pipeline
 
@@ -46,4 +46,4 @@ tda-eeg-audio/
 ├── requirements.txt
 └── README.md
 ```
-comentarios/consultas a mgothe@uc.cl
+
